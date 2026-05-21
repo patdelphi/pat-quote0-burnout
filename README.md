@@ -40,9 +40,23 @@ python quote0_usage.py
 */10 * * * * /bin/bash /path/to/quote0-burnout/run.sh >> /tmp/quote0-burnout.log 2>&1
 ```
 
-**macOS launchd** — copy `com.ajax.quote0-burnout.plist` to `~/Library/LaunchAgents/` and run:
+**macOS launchd** — copy `com.ajax.quote0-burnout.plist.example` to `~/Library/LaunchAgents/`, edit the `Program` path to match your checkout, then:
 ```bash
 launchctl load ~/Library/LaunchAgents/com.ajax.quote0-burnout.plist
+```
+
+## Smoke test
+
+```bash
+# verify env
+source .env && echo "API key length: ${#QUOTE0_API_KEY}"
+
+# test CodexBar
+codexbar usage --provider codex --format json | python3 -m json.tool > /dev/null \
+  && echo "CodexBar OK" || echo "CodexBar FAIL"
+
+# test script
+python quote0_usage.py
 ```
 
 ## Success

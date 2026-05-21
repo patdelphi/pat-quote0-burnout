@@ -170,7 +170,11 @@ def push_quote0(payload):
         timeout=20,
     )
     if not r.ok:
-        return {"ok": False, "status": r.status_code, "body": r.json()}
+        try:
+            body = r.json()
+        except Exception:
+            body = {"_raw": r.text}
+        return {"ok": False, "status": r.status_code, "body": body}
     return {"ok": True, "body": r.json()}
 
 
@@ -191,7 +195,11 @@ def main():
     print(json.dumps(output, ensure_ascii=False, indent=2))
 
     if not result.get("ok"):
-        msg = result.get("body", {}).get("message", "unknown error")
+        body = result.get("body", {})
+        if isinstance(body, dict):
+            msg = body.get("message", str(body))
+        else:
+            msg = str(body)
         print(f"\n⚠️  Push failed (HTTP {result.get('status')}): {msg}", file=sys.stderr)
         sys.exit(1)
 

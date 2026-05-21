@@ -1,4 +1,4 @@
 #!/bin/bash
-cd ~/Projects/quote0-burnout
+cd "$(dirname "$0")"
 source .env
 exec .venv/bin/python quote0_usage.py
