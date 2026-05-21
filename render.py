@@ -119,7 +119,7 @@ def _render_v4(draw: ImageDraw.ImageDraw, snapshot: dict):
         label_w = max(lw_short, lw_long)
 
         bar_x = PAD + label_w + 8
-        bar_w = 62
+        bar_w = 110
         bar_h = lh  # doubled: full row height
 
         # Short window row: label + bar + remaining%, reset right-aligned
