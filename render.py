@@ -108,9 +108,11 @@ def _render_v4(draw: ImageDraw.ImageDraw, snapshot: dict):
         short_pct = cx.get("short_used_percent")
         short_reset = cx.get("short_reset", "?")
 
-        pct_text = f"{short_pct}%" if short_pct is not None else "?"
+        # Show remaining, not used (codex web style)
+        short_rem = (100 - short_pct) if short_pct is not None else None
+        rem_text = f"{short_rem}%" if short_rem is not None else "?"
 
-        # Use widest label as fixed offset so bars align
+        # Bar: filled = available (remaining), empty = used
         lw_short, lh = _text_size(draw, short_label, row_font)
         long_label = cx.get("long_label", "?")
         lw_long, _ = _text_size(draw, long_label, row_font)
@@ -118,14 +120,14 @@ def _render_v4(draw: ImageDraw.ImageDraw, snapshot: dict):
 
         bar_x = PAD + label_w + 8
         bar_w = 62
-        bar_h = lh - 2
+        bar_h = lh  # doubled: full row height
 
-        # Short window row: label + bar + pct, reset right-aligned
-        _draw_bar(draw, bar_x, y + 2, bar_w, bar_h, short_pct)
+        # Short window row: label + bar + remaining%, reset right-aligned
+        _draw_bar(draw, bar_x, y, bar_w, bar_h, short_rem)
         pctx = bar_x + bar_w + 8
 
         draw.text((PAD, y), short_label, font=row_font, fill=BLACK)
-        draw.text((pctx, y), pct_text, font=row_font, fill=BLACK)
+        draw.text((pctx, y), rem_text, font=row_font, fill=BLACK)
 
         # Reset time — same line, right-aligned
         if short_reset and short_reset != "?":
@@ -138,10 +140,11 @@ def _render_v4(draw: ImageDraw.ImageDraw, snapshot: dict):
         # Long window row
         long_pct = cx.get("long_used_percent")
         if long_pct is not None:
-            long_pct_text = f"{long_pct}%"
-            _draw_bar(draw, bar_x, y + 2, bar_w, bar_h, long_pct)
+            long_rem = 100 - long_pct
+            long_rem_text = f"{long_rem}%"
+            _draw_bar(draw, bar_x, y, bar_w, bar_h, long_rem)
             draw.text((PAD, y), long_label, font=row_font, fill=BLACK)
-            draw.text((pctx, y), long_pct_text, font=row_font, fill=BLACK)
+            draw.text((pctx, y), long_rem_text, font=row_font, fill=BLACK)
             y += lh + 8
 
         # Empty line after Week before divider
