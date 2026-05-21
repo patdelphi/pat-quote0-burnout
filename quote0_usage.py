@@ -34,7 +34,7 @@ QUOTE0_REFRESH_NOW = os.environ.get("QUOTE0_REFRESH_NOW", "false").lower() == "t
 def get_codex_usage():
     try:
         raw = subprocess.check_output(
-            [CODEXBAR_BIN, "usage", "--provider", "codex", "--format", "json"],
+            [CODEXBAR_BIN, "usage", "--provider", "codex", "--format", "json", "--source", "cli"],
             text=True,
             timeout=20,
         )

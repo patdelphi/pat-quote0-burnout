@@ -26,32 +26,15 @@ source .env
 |----------|----------|-------------|
 | `QUOTE0_API_KEY` | Yes | Quote/0 API key |
 | `QUOTE0_DEVICE_ID` | Yes | Quote/0 device ID |
-| `QUOTE0_IMAGE_TASK_KEY` | * | taskKey for Image API content slot |
-| `QUOTE0_TEXT_TASK_KEY` | * | taskKey for Text API content slot |
-| `QUOTE0_REFRESH_NOW` | No | Force immediate display (default: `false`; set `true` for manual push) |
+| `QUOTE0_REFRESH_NOW` | No | Force immediate display (default: `true`) |
 | `DEEPSEEK_API_KEY` | No | DeepSeek API key |
 | `CODEXBAR_BIN` | No | Path to CodexBar CLI (default: `codexbar`) |
 
-\\* *Required when multiple API content slots exist (e.g. fixed + loop). Find keys with:*
-
-```bash
-# List fixed content slots
-curl -H "Authorization: Bearer $QUOTE0_API_KEY" \
-  "https://dot.mindreset.tech/api/authV2/open/device/$QUOTE0_DEVICE_ID/fixed/list"
-
-# List loop content slots
-curl -H "Authorization: Bearer $QUOTE0_API_KEY" \
-  "https://dot.mindreset.tech/api/authV2/open/device/$QUOTE0_DEVICE_ID/loop/list"
-```
-
-Look for `"type": "IMAGE_API"` or `"type": "TEXT_API"` entries and copy their `"key"`.
-
 ### Dot. App setup
 
-In Content Studio, add **Image API content** to the device task for Image mode,
-or **Text API content** for `--text` fallback.
-
-**Fixed content mode:** if you placed the API content in a Fixed Content slot (not Loop), set `QUOTE0_REFRESH_NOW=false` so the device's schedule controls when to display it. The API only updates the slot's data.
+In Content Studio, add a single **Image API content** card to the device task.
+Keep only one IMAGE_API card — the script pushes without `taskKey` and targets
+the sole slot automatically.
 
 ## Usage
 
@@ -64,15 +47,14 @@ python quote0_usage.py         # Standalone Text API (v0.1)
 
 ## Schedule
 
-**cron** (every 5 min):
-```
-*/5 * * * * /bin/bash /path/to/quote0-burnout/run.sh >> /tmp/quote0-burnout.log 2>&1
-```
+**macOS launchd** — copy `com.ajax.quote0-burnout.plist.example` to
+`~/Library/LaunchAgents/`, edit the `Program` path to match your checkout, then:
 
-**macOS launchd** — copy `com.ajax.quote0-burnout.plist.example` to `~/Library/LaunchAgents/`, edit the `Program` path to match your checkout, then:
 ```bash
 launchctl load ~/Library/LaunchAgents/com.ajax.quote0-burnout.plist
 ```
+
+Runs every 5 minutes at :00, :05, :10...
 
 ## Smoke test
 
@@ -90,3 +72,32 @@ python display.py --preview
 # full push
 python display.py
 ```
+
+## Troubleshooting
+
+**`SyntaxError` on run**
+
+Check file line endings are LF (not CRLF):
+
+```bash
+file display.py render.py quote0_usage.py
+```
+
+**`ModuleNotFoundError: No module named 'PIL'`**
+
+```bash
+pip install -r requirements.txt
+```
+
+**Image API push returns 404 "未找到图像 API 内容"**
+
+1. Go to Dot. App → Content Studio
+2. Remove all IMAGE_API cards from the device task
+3. Re-add a single IMAGE_API card
+4. Ensure only one IMAGE_API card exists (no duplicates in loop + fixed)
+
+**Display doesn't update on schedule**
+
+- Check launchd status: `launchctl list | grep quote0`
+- If `runs = 0`, kickstart: `launchctl kickstart gui/$(id -u)/com.ajax.quote0-burnout`
+- If cron is blocked by macOS TCC, grant Terminal / cron Full Disk Access in System Settings → Privacy & Security

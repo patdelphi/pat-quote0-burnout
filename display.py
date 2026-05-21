@@ -42,7 +42,7 @@ API_BASE = "https://dot.mindreset.tech"
 def get_codex_usage():
     try:
         raw = subprocess.check_output(
-            [CODEXBAR_BIN, "usage", "--provider", "codex", "--format", "json"],
+            [CODEXBAR_BIN, "usage", "--provider", "codex", "--format", "json", "--source", "cli"],
             text=True,
             timeout=20,
         )
