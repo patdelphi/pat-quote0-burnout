@@ -1,8 +1,28 @@
 # quote0-burnout
 
-Minimal AI usage display for MindReset Quote/0 — Codex + DeepSeek on e-ink.
+Minimal AI usage dashboard for MindReset Quote/0 — Codex + DeepSeek on e-ink.
 
-v0.3 renders a 296×152 B&W PNG and pushes via Quote/0 Image API.
+v0.4 renders a compact 296×152 B&W dashboard with progress bars and status indicators.
+
+## v0.4 Layout
+
+```
+┌──────────────────────────────┐
+│ AI BURNOUT              16:40│
+│                              │
+│ CODEX                        │
+│ 5h  ███████░░░ 72%  2h13m    │
+│ Wk  ████░░░░░░ 41%           │
+│                              │
+│ DEEPSEEK                     │
+│ $18.42                 OK    │
+└──────────────────────────────┘
+```
+
+- **Codex**: short-window usage + weekly usage with progress bars (solid = used, outline = remaining)
+- **DeepSeek**: balance with status badge (OK / WARN / HOT)
+- Percentages are **used** percentages, not remaining. High = close to burnout.
+- Status levels: `ok` (<70%), `warn` (70–89%), `hot` (≥90%)
 
 ## Install
 
@@ -42,6 +62,9 @@ the sole slot automatically.
 ## Usage
 
 ```bash
+# Debug — print structured snapshot as JSON
+python display.py --debug-json
+
 # Self-check — tests everything without pushing
 python display.py --check
 
@@ -85,6 +108,9 @@ codexbar usage --provider codex --format json --source cli | python3 -m json.too
 
 # self-check
 python display.py --check
+
+# debug snapshot
+python display.py --debug-json
 
 # preview only (no push)
 python display.py --preview
@@ -136,3 +162,10 @@ codexbar usage --provider codex --format json --source cli
 python display.py --check
 ```
 Shows: env vars, CodexBar status, DeepSeek balance, image rendering, and Quote/0 connectivity — all without pushing.
+
+**Debug data structure**
+
+```bash
+python display.py --debug-json
+```
+Prints the full snapshot dict — useful for checking CodexBar parsing and status levels.

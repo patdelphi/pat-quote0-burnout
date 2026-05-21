@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
-quote0-burnout v0.3 — fetch usage, render image, push to Quote/0.
+quote0-burnout v0.4 — fetch usage, build snapshot, render dashboard, push to Quote/0.
 
 Usage:
-  python display.py                 # Image API (default)
-  python display.py --preview       # Save preview PNG, skip push
-  python display.py --text          # Text API fallback (v0.1 compat)
-  python display.py --check         # Self-check, no push
-  python display.py --list-tasks    # List fixed + loop task slots
+  python display.py                   # Image API (default)
+  python display.py --preview         # Save preview PNG, skip push
+  python display.py --text            # Text API fallback (v0.1 compat)
+  python display.py --check           # Self-check, no push
+  python display.py --debug-json      # Print snapshot JSON, no push
+  python display.py --list-tasks      # List fixed + loop task slots
   python display.py --list-tasks fixed
   python display.py --list-tasks loop
 """
@@ -44,6 +45,45 @@ QUOTE0_TEXT_TASK_KEY  = _env("QUOTE0_TEXT_TASK_KEY")
 QUOTE0_PREVIEW_PATH   = _env("QUOTE0_PREVIEW_PATH", "/tmp/quote0_burnout_preview.png")
 
 API_BASE = "https://dot.mindreset.tech"
+
+# ── Status helpers ────────────────────────────────────────────────────────────
+
+def _pct_status(pct: int | None) -> str:
+    """Codex used-percent → ok / warn / hot / unknown."""
+    if pct is None:
+        return "unknown"
+    if pct >= 90:
+        return "hot"
+    if pct >= 70:
+        return "warn"
+    return "ok"
+
+
+def _balance_status(balance: float | None, is_available: bool | None) -> str:
+    """DeepSeek balance → ok / warn / hot / unknown / error."""
+    if balance is None:
+        return "unknown"
+    if is_available is False:
+        return "hot"
+    if balance < 3:
+        return "hot"
+    if balance < 10:
+        return "warn"
+    return "ok"
+
+
+def _window_label(minutes: int | None) -> str:
+    """windowMinutes → human label."""
+    if minutes is None:
+        return "Now"
+    if minutes <= 360:
+        return "5h"
+    if minutes <= 1440:
+        return "Day"
+    if minutes >= 10080:
+        return "Week"
+    return "Now"
+
 
 # ── Fetch ─────────────────────────────────────────────────────────────────────
 
@@ -107,7 +147,109 @@ def get_deepseek_balance():
         return {"ok": False, "status": "error"}
 
 
-# ── Normalize ─────────────────────────────────────────────────────────────────
+# ── Snapshot builder (v0.4) ────────────────────────────────────────────────────
+
+CURRENCY_SYMBOLS = {"USD": "$", "CNY": "¥", "EUR": "€", "GBP": "£"}
+
+
+def build_codex_snapshot(codex: dict) -> dict:
+    """Build structured codex snapshot from raw codexbar data."""
+    if not codex.get("ok"):
+        status = codex.get("status", "error")
+        return {
+            "ok": False,
+            "short_label": "?",
+            "short_used_percent": None,
+            "short_reset": "?",
+            "long_label": "?",
+            "long_used_percent": None,
+            "status": "error",
+            "raw_status": status,
+        }
+
+    raw = codex.get("raw", {})
+    usage = raw.get("usage", {}) if isinstance(raw, dict) else {}
+
+    primary = usage.get("primary", {})
+    secondary = usage.get("secondary", {})
+
+    short_pct = primary.get("usedPercent")
+    short_min = primary.get("windowMinutes")
+    short_reset_iso = primary.get("resetsAt")
+
+    long_pct = secondary.get("usedPercent")
+    long_min = secondary.get("windowMinutes")
+
+    # Fallback: old flat fields
+    if short_pct is None:
+        short_pct = raw.get("percent") or raw.get("usage_percent") or raw.get("remaining_percent")
+
+    # percent can be int or float; normalize to int
+    try:
+        short_pct = int(float(short_pct)) if short_pct is not None else None
+    except (ValueError, TypeError):
+        short_pct = None
+    try:
+        long_pct = int(float(long_pct)) if long_pct is not None else None
+    except (ValueError, TypeError):
+        long_pct = None
+
+    return {
+        "ok": True,
+        "short_label": _window_label(short_min),
+        "short_used_percent": short_pct,
+        "short_reset": _time_until(short_reset_iso) if short_reset_iso else "?",
+        "long_label": _window_label(long_min) if long_min else "?",
+        "long_used_percent": long_pct if long_min else None,
+        "status": _pct_status(short_pct),
+        "raw_status": "",
+    }
+
+
+def build_deepseek_snapshot(ds: dict) -> dict:
+    """Build structured deepseek snapshot from balance API response."""
+    if not ds.get("ok"):
+        status = ds.get("status", "error")
+        return {
+            "ok": False,
+            "balance": None,
+            "currency": "?",
+            "symbol": "?",
+            "status": "error",
+            "raw_status": status,
+        }
+
+    amount = ds.get("amount")
+    try:
+        amount = float(amount) if amount is not None else None
+    except (ValueError, TypeError):
+        amount = None
+
+    currency = ds.get("currency", "USD")
+    available = ds.get("available")
+
+    return {
+        "ok": True,
+        "balance": amount,
+        "currency": currency,
+        "symbol": CURRENCY_SYMBOLS.get(currency, "$"),
+        "status": _balance_status(amount, available),
+        "raw_status": "",
+    }
+
+
+def build_snapshot() -> dict:
+    """Fetch and build full snapshot."""
+    codex = get_codex_usage()
+    deepseek = get_deepseek_balance()
+    return {
+        "codex": build_codex_snapshot(codex),
+        "deepseek": build_deepseek_snapshot(deepseek),
+        "updated_at": datetime.now().strftime("%H:%M"),
+    }
+
+
+# ── Legacy normalize (v0.2–v0.3 compat) ───────────────────────────────────────
 
 def _time_until(iso_str: str | None) -> str:
     if not iso_str:
@@ -128,6 +270,7 @@ def _time_until(iso_str: str | None) -> str:
 
 
 def normalize_codex(codex):
+    """Legacy string formatter (v0.2–v0.3)."""
     if not codex.get("ok"):
         return codex.get("status", "unknown")
 
@@ -141,6 +284,10 @@ def normalize_codex(codex):
     secondary = usage.get("secondary", {})
     sec_pct = secondary.get("usedPercent")
     window_m = secondary.get("windowMinutes", 0)
+
+    # Fallback old flat fields
+    if pct is None:
+        pct = raw.get("percent") or raw.get("usage_percent") or raw.get("remaining_percent")
 
     if pct is None:
         return "OK"
@@ -158,6 +305,7 @@ def normalize_codex(codex):
 
 
 def normalize_deepseek(ds):
+    """Legacy string formatter (v0.2–v0.3)."""
     if not ds.get("ok"):
         return ds.get("status", "unknown")
 
@@ -165,14 +313,42 @@ def normalize_deepseek(ds):
     if amount is None:
         return "unknown"
 
-    symbol = {"CNY": "¥", "USD": "$", "EUR": "€"}.get(
-        ds.get("currency", ""), "$"
-    )
+    symbol = CURRENCY_SYMBOLS.get(ds.get("currency", ""), "$")
 
     try:
         return f"{symbol}{float(amount):.2f}"
     except Exception:
         return str(amount)
+
+
+def format_codex_text(sn: dict) -> str:
+    """Format codex snapshot for Text API."""
+    if not sn.get("ok"):
+        return sn.get("raw_status", "error")
+
+    pct = sn.get("short_used_percent")
+    pct_str = f"{pct}%" if pct is not None else "?"
+    reset = sn.get("short_reset", "?")
+
+    line = f"{sn['short_label']} {pct_str} reset {reset}"
+
+    long_pct = sn.get("long_used_percent")
+    if long_pct is not None:
+        line += f"\n{sn['long_label']} {long_pct}%"
+
+    return line
+
+
+def format_deepseek_text(sn: dict) -> str:
+    """Format deepseek snapshot for Text API."""
+    if not sn.get("ok"):
+        return sn.get("raw_status", "error")
+
+    bal = sn.get("balance")
+    if bal is None:
+        return "unknown"
+
+    return f"{sn['symbol']}{bal:.2f} {sn['status'].upper()}"
 
 
 # ── Push ──────────────────────────────────────────────────────────────────────
@@ -228,31 +404,43 @@ def push_text(payload: dict) -> dict:
 
 # ── Run (push) ────────────────────────────────────────────────────────────────
 
-def run(preview: bool = False, text_mode: bool = False) -> bool:
-    codex = get_codex_usage()
-    deepseek = get_deepseek_balance()
-
-    codex_text = normalize_codex(codex)
-    deepseek_text = normalize_deepseek(deepseek)
-
-    print(f"Codex:     {codex_text}")
-    print(f"DeepSeek:  {deepseek_text}")
+def run(preview: bool = False, text_mode: bool = False):
+    snapshot = build_snapshot()
 
     if text_mode:
-        now = datetime.now().strftime("%H:%M")
+        cx_text = format_codex_text(snapshot["codex"])
+        ds_text = format_deepseek_text(snapshot["deepseek"])
+        print(f"Codex:     {cx_text.replace(chr(10), ' / ')}")
+        print(f"DeepSeek:  {ds_text}")
+
+        now = snapshot["updated_at"]
         payload = {
             "title": "AI Usage",
-            "message": f"Codex     {codex_text}\nDeepSeek  {deepseek_text}",
+            "message": f"Codex {cx_text}\nDeepSeek {ds_text}",
             "signature": now,
         }
         result = push_text(payload)
     else:
-        png = render_image(codex_text, deepseek_text)
+        # v0.4 uses snapshot dict; render.py handles both
+        png = render_image(snapshot)
 
         if preview is True:
             Path(QUOTE0_PREVIEW_PATH).write_bytes(png)
             print(f"Preview saved to {QUOTE0_PREVIEW_PATH}")
             print("--preview only, skipping push")
+            # Also print a summary for preview
+            cx = snapshot["codex"]
+            ds = snapshot["deepseek"]
+            if cx["ok"]:
+                print(f"Codex:     {cx['short_label']} {cx['short_used_percent']}% reset {cx['short_reset']} [{cx['status']}]")
+                if cx["long_used_percent"] is not None:
+                    print(f"          {cx['long_label']} {cx['long_used_percent']}%")
+            else:
+                print(f"Codex:     {cx['raw_status']}")
+            if ds["ok"]:
+                print(f"DeepSeek:  {ds['symbol']}{ds['balance']:.2f} [{ds['status']}]")
+            else:
+                print(f"DeepSeek:  {ds['raw_status']}")
             return True
 
         result = push_image(png)
@@ -321,7 +509,6 @@ def check() -> int:
     # ── CodexBar ───────────────────────────────────────────────────────────
     print("CodexBar:")
 
-    # Binary check
     binary_ok = False
     try:
         result = subprocess.run(
@@ -341,19 +528,18 @@ def check() -> int:
     except Exception as e:
         print(_status("binary", False, str(e)))
 
-    # Usage check
     codex_ok = False
-    codex_detail = ""
     if binary_ok:
         codex = get_codex_usage()
-        if codex.get("ok"):
-            codex_text = normalize_codex(codex)
-            print(_status("usage", True, codex_text))
+        sn_codex = build_codex_snapshot(codex)
+        if sn_codex["ok"]:
+            pct = sn_codex["short_used_percent"]
+            pct_str = f"{pct}%" if pct is not None else "?"
+            detail = f"{sn_codex['short_label']} {pct_str} [{sn_codex['status']}]"
+            print(_status("usage", True, detail))
             codex_ok = True
-            codex_detail = codex_text
         else:
-            status = codex.get("status", "unknown")
-            print(_status("usage", False, status))
+            print(_status("usage", False, sn_codex["raw_status"]))
     else:
         print(_status("usage", False, "binary not found"))
 
@@ -362,16 +548,17 @@ def check() -> int:
     # ── DeepSeek ───────────────────────────────────────────────────────────
     print("DeepSeek:")
     ds_ok = False
-    ds_detail = ""
     if DEEPSEEK_API_KEY:
         ds = get_deepseek_balance()
-        if ds.get("ok"):
-            ds_detail = normalize_deepseek(ds)
-            print(_status("balance", True, ds_detail))
+        sn_ds = build_deepseek_snapshot(ds)
+        if sn_ds["ok"]:
+            bal = sn_ds["balance"]
+            bal_str = f"{sn_ds['symbol']}{bal:.2f}" if bal is not None else "?"
+            detail = f"{bal_str} [{sn_ds['status']}]"
+            print(_status("balance", True, detail))
             ds_ok = True
         else:
-            status = ds.get("status", "unknown")
-            print(_status("balance", False, status))
+            print(_status("balance", False, sn_ds["raw_status"]))
     else:
         print(_status("balance", False, "no API key"))
 
@@ -382,9 +569,12 @@ def check() -> int:
     render_ok = False
     if codex_ok or ds_ok:
         try:
-            cx = codex_detail if codex_ok else "N/A"
-            ds = ds_detail if ds_ok else "N/A"
-            png = render_image(cx, ds)
+            snapshot = {
+                "codex": build_codex_snapshot(get_codex_usage() if codex_ok else {"ok": False, "status": "n/a"}),
+                "deepseek": build_deepseek_snapshot(get_deepseek_balance() if ds_ok else {"ok": False, "status": "n/a"}),
+                "updated_at": datetime.now().strftime("%H:%M"),
+            }
+            png = render_image(snapshot)
             Path(QUOTE0_PREVIEW_PATH).write_bytes(png)
             print(_status("image", True, QUOTE0_PREVIEW_PATH))
             render_ok = True
@@ -434,8 +624,6 @@ def check() -> int:
         return 0
     elif failures == 0 and warnings > 0:
         print(f"  WARNING ({warnings} non-critical issue(s))")
-        # WARNING: Codex fail + DeepSeek OK → 0; DeepSeek fail + Codex OK → 0
-        # Both fail → 1
         if not codex_ok and not ds_ok:
             return 1
         return 0
@@ -488,7 +676,6 @@ def list_tasks(task_type: str = "") -> int:
                     continue
                 t = task.get("type", "?")
                 k = task.get("key", "?")
-                # Try title first, then name
                 title = task.get("title", task.get("name", ""))
                 line = f"  {t:<12} {k}"
                 if title:
@@ -500,11 +687,19 @@ def list_tasks(task_type: str = "") -> int:
 
         if task_type:
             continue
-        # blank line between fixed & loop
         if tt == "fixed" and "loop" in types:
             print()
 
     return 0
+
+
+# ── Debug JSON ────────────────────────────────────────────────────────────────
+
+def debug_json():
+    """Print snapshot as JSON, no push."""
+    snapshot = build_snapshot()
+    print(json.dumps(snapshot, ensure_ascii=False, indent=2))
+    return True
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
@@ -526,6 +721,10 @@ def main():
         help="Run self-check — tests env, deps, data, render, endpoints (no push)"
     )
     parser.add_argument(
+        "--debug-json", action="store_true",
+        help="Print snapshot JSON — fetch + normalize, no push, no render"
+    )
+    parser.add_argument(
         "--list-tasks", nargs="?", const="", metavar="TYPE",
         help="List task slots: no arg = fixed+loop, 'fixed', 'loop'"
     )
@@ -540,6 +739,11 @@ def main():
     if args.list_tasks is not None:
         rc = list_tasks(args.list_tasks)
         sys.exit(rc)
+
+    # ── --debug-json ───────────────────────────────────────────────────────
+    if args.debug_json:
+        ok = debug_json()
+        sys.exit(0 if ok else 1)
 
     # ── default / --preview / --text ───────────────────────────────────────
     success = run(preview=args.preview, text_mode=args.text)
