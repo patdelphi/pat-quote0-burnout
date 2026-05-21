@@ -1,4 +1,4 @@
-# quote0-usage
+# quote0-burnout
 
 Minimal AI usage display for MindReset Quote/0. Shows Codex and DeepSeek status.
 
@@ -7,7 +7,7 @@ Minimal AI usage display for MindReset Quote/0. Shows Codex and DeepSeek status.
 ```bash
 pip install requests
 # CodexBar must also be installed and working:
-codexbar --provider codex --format json
+codexbar usage --provider codex --format json
 ```
 
 ## Configure
@@ -37,10 +37,13 @@ python quote0_usage.py
 
 **cron** (every 10 min):
 ```
-*/10 * * * * /usr/bin/python3 /path/to/quote0_usage.py >> /tmp/quote0-usage.log 2>&1
+*/10 * * * * /bin/bash /path/to/quote0-burnout/run.sh >> /tmp/quote0-burnout.log 2>&1
 ```
 
-**macOS launchd** — TBD.
+**macOS launchd** — copy `com.ajax.quote0-burnout.plist` to `~/Library/LaunchAgents/` and run:
+```bash
+launchctl load ~/Library/LaunchAgents/com.ajax.quote0-burnout.plist
+```
 
 ## Success
 
