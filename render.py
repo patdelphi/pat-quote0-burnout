@@ -4,7 +4,7 @@ Render a 296×152 pure black/white PNG for Quote/0.
 v0.4: accepts a snapshot dict with structured codex/deepseek data.
       Falls back to legacy string mode for backward compat.
 
-Layout (v0.4):
+Layout:
 ┌──────────────────────────────┐
 │ AI BURNOUT              16:40│
 │                              │
@@ -13,7 +13,7 @@ Layout (v0.4):
 │ Wk  ████░░░░░░ 41%           │
 │                              │
 │ DEEPSEEK                     │
-│ $18.42                 OK    │
+│ $18.42                 [OK]  │
 └──────────────────────────────┘
 """
 
@@ -53,8 +53,8 @@ def _draw_bar(
     used_pct: int | None,
     seg_count: int = 10,
 ):
-    """Draw a 10-segment progress bar. Solid black = used, outline = remaining."""
-    seg_w = (bar_w - (seg_count - 1) * 2) // seg_count  # 2px gap between segments
+    """Draw a 10-segment progress bar. Solid = used, outline = remaining."""
+    seg_w = (bar_w - (seg_count - 1) * 2) // seg_count
     gap = 2
 
     if used_pct is None:
@@ -65,21 +65,20 @@ def _draw_bar(
     for i in range(seg_count):
         sx = x + i * (seg_w + gap)
         if i < used_segs:
-            # Solid black rectangle
             draw.rectangle([sx, y, sx + seg_w - 1, y + bar_h - 1], fill=BLACK)
         else:
-            # Outlined rectangle
             draw.rectangle([sx, y, sx + seg_w - 1, y + bar_h - 1], outline=BLACK)
 
 
 # ── v0.4 Layout ────────────────────────────────────────────────────────────────
 
 def _render_v4(draw: ImageDraw.ImageDraw, snapshot: dict):
-    """Render v0.4 dashboard layout."""
-    title_font = _font(13)
+    """Render v0.4 dashboard layout matching HTML mockup."""
+    title_font = _font(14)
     section_font = _font(10)
-    body_font = _font(14)
-    ts_font = _font(11)
+    row_font = _font(11)
+    balance_font = _font(20)
+    badge_font = _font(12)
 
     cx = snapshot.get("codex", {})
     ds = snapshot.get("deepseek", {})
@@ -87,14 +86,13 @@ def _render_v4(draw: ImageDraw.ImageDraw, snapshot: dict):
 
     # ── Title bar ──────────────────────────────────────────────────────────
     title = "AI BURNOUT"
-    _, th = _text_size(draw, title, title_font)
     draw.text((PAD, PAD), title, font=title_font, fill=BLACK)
+    _, th = _text_size(draw, title, title_font)
 
-    # Timestamp (right-aligned)
-    tsw, _ = _text_size(draw, updated, ts_font)
-    draw.text((W - PAD - tsw, PAD), updated, font=ts_font, fill=BLACK)
+    tsw, _ = _text_size(draw, updated, _font(12))
+    draw.text((W - PAD - tsw, PAD + 1), updated, font=_font(12), fill=BLACK)
 
-    # Divider under title
+    # Divider
     div1_y = PAD + th + 4
     draw.line([(PAD, div1_y), (W - PAD, div1_y)], fill=BLACK, width=1)
 
@@ -102,51 +100,54 @@ def _render_v4(draw: ImageDraw.ImageDraw, snapshot: dict):
     y = div1_y + 6
 
     draw.text((PAD, y), "CODEX", font=section_font, fill=BLACK)
-    y += 14
+    _, sh = _text_size(draw, "CODEX", section_font)
+    y += sh + 2
 
     if cx.get("ok"):
-        # Short window row: "5h  ███████░░░ 72%  2h13m"
         short_label = cx.get("short_label", "?")
         short_pct = cx.get("short_used_percent")
         short_reset = cx.get("short_reset", "?")
 
-        label_text = short_label
         pct_text = f"{short_pct}%" if short_pct is not None else "?"
-        reset_text = short_reset
 
-        # Layout: label | bar | pct | reset
-        lw, lh = _text_size(draw, label_text, body_font)
-        bar_x = PAD + lw + 6
-        bar_w = 76
+        # Font metrics
+        lw, lh = _text_size(draw, short_label, row_font)
+
+        # Progress bar
+        bar_x = PAD + lw + 4
+        bar_w = 56
         bar_h = lh - 2
         _draw_bar(draw, bar_x, y + 1, bar_w, bar_h, short_pct)
 
-        pctx = bar_x + bar_w + 6
-        draw.text((PAD, y), label_text, font=body_font, fill=BLACK)
-        draw.text((pctx, y), pct_text, font=body_font, fill=BLACK)
+        # Percentage after bar
+        pctx = bar_x + bar_w + 4
 
-        pw, _ = _text_size(draw, pct_text, body_font)
-        reset_x = pctx + pw + 6
-        draw.text((reset_x, y), reset_text, font=body_font, fill=BLACK)
+        # Draw label + percentage
+        draw.text((PAD, y), short_label, font=row_font, fill=BLACK)
+        draw.text((pctx, y), pct_text, font=row_font, fill=BLACK)
+
+        # Reset time — right-aligned
+        reset_w, _ = _text_size(draw, short_reset, row_font)
+        draw.text((W - PAD - reset_w, y), short_reset, font=row_font, fill=BLACK)
 
         y += lh + 2
 
-        # Long window row: "Wk  ████░░░░░░ 41%"
+        # Long window row: Wk  ████░░░░░░ 41%
         long_label = cx.get("long_label", "?")
         long_pct = cx.get("long_used_percent")
 
         if long_pct is not None:
             long_pct_text = f"{long_pct}%"
-            llw, llh = _text_size(draw, long_label, body_font)
+            llw, llh = _text_size(draw, long_label, row_font)
             _draw_bar(draw, bar_x, y + 1, bar_w, bar_h, long_pct)
-            draw.text((PAD, y), long_label, font=body_font, fill=BLACK)
-            draw.text((pctx, y), long_pct_text, font=body_font, fill=BLACK)
+            draw.text((PAD, y), long_label, font=row_font, fill=BLACK)
+            draw.text((pctx, y), long_pct_text, font=row_font, fill=BLACK)
             y += llh + 2
     else:
         status = cx.get("raw_status", "error")
-        draw.text((PAD, y), status, font=body_font, fill=BLACK)
-        _, lh = _text_size(draw, status, body_font)
-        y += lh + 2
+        draw.text((PAD, y), status, font=row_font, fill=BLACK)
+        _, eh = _text_size(draw, status, row_font)
+        y += eh + 2
 
     # Divider between sections
     y += 2
@@ -155,7 +156,8 @@ def _render_v4(draw: ImageDraw.ImageDraw, snapshot: dict):
 
     # ── DeepSeek section ───────────────────────────────────────────────────
     draw.text((PAD, y), "DEEPSEEK", font=section_font, fill=BLACK)
-    y += 14
+    _, sh = _text_size(draw, "DEEPSEEK", section_font)
+    y += sh + 4
 
     if ds.get("ok"):
         bal = ds.get("balance")
@@ -163,15 +165,19 @@ def _render_v4(draw: ImageDraw.ImageDraw, snapshot: dict):
         status = ds.get("status", "ok").upper()
 
         bal_text = f"{sym}{bal:.2f}" if bal is not None else "?"
-        draw.text((PAD, y), bal_text, font=body_font, fill=BLACK)
+        draw.text((PAD, y), bal_text, font=balance_font, fill=BLACK)
 
-        # Status badge (right-aligned)
-        st_text = status
-        stw, _ = _text_size(draw, st_text, ts_font)
-        draw.text((W - PAD - stw, y), st_text, font=ts_font, fill=BLACK)
+        # Status badge — bordered, right-aligned
+        bw, bh = _text_size(draw, status, badge_font)
+        bx = W - PAD - bw - 6  # 3px padding each side
+        by = y + 2  # align with baseline of large text
+
+        # Badge border
+        draw.rectangle([bx - 3, by - 1, bx + bw + 2, by + bh + 1], outline=BLACK)
+        draw.text((bx, by), status, font=badge_font, fill=BLACK)
     else:
         status = ds.get("raw_status", "error")
-        draw.text((PAD, y), status, font=body_font, fill=BLACK)
+        draw.text((PAD, y), status, font=row_font, fill=BLACK)
 
 
 # ── Legacy layout (v0.2–v0.3 compat) ──────────────────────────────────────────
@@ -228,16 +234,13 @@ def render_image(
     else:
         _render_legacy(draw, codex_text_or_snapshot, deepseek_text or "?")
 
-    # Convert to pure 1-bit PNG
     img = img.convert("1", dither=Image.Dither.NONE)
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
 
 
-# For standalone testing
 if __name__ == "__main__":
-    # Test v0.4 layout
     snap = {
         "codex": {
             "ok": True,
