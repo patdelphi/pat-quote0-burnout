@@ -93,11 +93,12 @@ def get_codex_usage():
             [CODEXBAR_BIN, "usage", "--provider", "codex", "--format", "json", "--source", "cli"],
             text=True,
             timeout=20,
+            stderr=subprocess.PIPE,
         )
         try:
             data = json.loads(raw)
         except Exception:
-            return {"ok": False, "status": "parse error"}
+            return {"ok": False, "status": "parse error", "detail": raw[:200]}
 
         entry = data[0] if isinstance(data, list) and data else data
         return {"ok": True, "raw": entry}
@@ -106,8 +107,11 @@ def get_codex_usage():
         return {"ok": False, "status": "no codexbar"}
     except subprocess.TimeoutExpired:
         return {"ok": False, "status": "timeout"}
-    except Exception:
-        return {"ok": False, "status": "login?"}
+    except subprocess.CalledProcessError as e:
+        detail = (e.stderr or e.stdout or "").strip()[:200]
+        return {"ok": False, "status": "error", "detail": detail}
+    except Exception as e:
+        return {"ok": False, "status": "error", "detail": str(e)[:200]}
 
 
 def get_deepseek_balance():
