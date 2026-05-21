@@ -9,11 +9,12 @@ Layout:
 │ AI BURNOUT              16:40│
 │                              │
 │ CODEX                        │
-│ 5h  ███████░░░ 72%  2h13m    │
-│ Wk  ████░░░░░░ 41%           │
+│ 5h   ███████░░░   72%        │
+│                 2h13m        │
+│ Wk   ████░░░░░░   41%        │
 │                              │
 │ DEEPSEEK                     │
-│ $18.42                 [OK]  │
+│ $18.42                 OK    │
 └──────────────────────────────┘
 """
 
@@ -73,11 +74,11 @@ def _draw_bar(
 # ── v0.4 Layout ────────────────────────────────────────────────────────────────
 
 def _render_v4(draw: ImageDraw.ImageDraw, snapshot: dict):
-    """Render v0.4 dashboard layout matching HTML mockup."""
+    """Render v0.4 dashboard layout."""
     title_font = _font(14)
-    section_font = _font(10)
-    row_font = _font(11)
-    balance_font = _font(20)
+    section_font = _font(11)
+    row_font = _font(13)
+    balance_font = _font(22)
     badge_font = _font(12)
 
     cx = snapshot.get("codex", {})
@@ -89,19 +90,18 @@ def _render_v4(draw: ImageDraw.ImageDraw, snapshot: dict):
     draw.text((PAD, PAD), title, font=title_font, fill=BLACK)
     _, th = _text_size(draw, title, title_font)
 
-    tsw, _ = _text_size(draw, updated, _font(12))
-    draw.text((W - PAD - tsw, PAD + 1), updated, font=_font(12), fill=BLACK)
+    ts_font = _font(12)
+    tsw, _ = _text_size(draw, updated, ts_font)
+    draw.text((W - PAD - tsw, PAD + 1), updated, font=ts_font, fill=BLACK)
 
-    # Divider
-    div1_y = PAD + th + 4
+    div1_y = PAD + th + 5
     draw.line([(PAD, div1_y), (W - PAD, div1_y)], fill=BLACK, width=1)
 
-    # ── Codex section ──────────────────────────────────────────────────────
+    # ── Codex section (taller, more spacing) ───────────────────────────────
     y = div1_y + 6
-
     draw.text((PAD, y), "CODEX", font=section_font, fill=BLACK)
     _, sh = _text_size(draw, "CODEX", section_font)
-    y += sh + 2
+    y += sh + 4
 
     if cx.get("ok"):
         short_label = cx.get("short_label", "?")
@@ -110,44 +110,46 @@ def _render_v4(draw: ImageDraw.ImageDraw, snapshot: dict):
 
         pct_text = f"{short_pct}%" if short_pct is not None else "?"
 
-        # Font metrics
         lw, lh = _text_size(draw, short_label, row_font)
 
-        # Progress bar
-        bar_x = PAD + lw + 4
-        bar_w = 56
+        # Bar: label + gap + bar + gap + percentage
+        bar_x = PAD + lw + 6
+        bar_w = 62
         bar_h = lh - 2
-        _draw_bar(draw, bar_x, y + 1, bar_w, bar_h, short_pct)
+        _draw_bar(draw, bar_x, y + 2, bar_w, bar_h, short_pct)
 
-        # Percentage after bar
-        pctx = bar_x + bar_w + 4
+        pctx = bar_x + bar_w + 6
 
-        # Draw label + percentage
         draw.text((PAD, y), short_label, font=row_font, fill=BLACK)
         draw.text((pctx, y), pct_text, font=row_font, fill=BLACK)
 
-        # Reset time — right-aligned
-        reset_w, _ = _text_size(draw, short_reset, row_font)
-        draw.text((W - PAD - reset_w, y), short_reset, font=row_font, fill=BLACK)
+        y += lh + 6
 
-        y += lh + 2
+        # Reset time on its own line below, right-aligned
+        if short_reset and short_reset != "?":
+            reset_font = _font(11)
+            reset_w, reset_h = _text_size(draw, short_reset, reset_font)
+            draw.text((W - PAD - reset_w, y), short_reset, font=reset_font, fill=BLACK)
+            y += reset_h + 4
+        else:
+            y += 2
 
-        # Long window row: Wk  ████░░░░░░ 41%
+        # Long window row
         long_label = cx.get("long_label", "?")
         long_pct = cx.get("long_used_percent")
 
         if long_pct is not None:
             long_pct_text = f"{long_pct}%"
             llw, llh = _text_size(draw, long_label, row_font)
-            _draw_bar(draw, bar_x, y + 1, bar_w, bar_h, long_pct)
+            _draw_bar(draw, bar_x, y + 2, bar_w, bar_h, long_pct)
             draw.text((PAD, y), long_label, font=row_font, fill=BLACK)
             draw.text((pctx, y), long_pct_text, font=row_font, fill=BLACK)
-            y += llh + 2
+            y += llh + 4
     else:
         status = cx.get("raw_status", "error")
         draw.text((PAD, y), status, font=row_font, fill=BLACK)
         _, eh = _text_size(draw, status, row_font)
-        y += eh + 2
+        y += eh + 4
 
     # Divider between sections
     y += 2
@@ -167,13 +169,10 @@ def _render_v4(draw: ImageDraw.ImageDraw, snapshot: dict):
         bal_text = f"{sym}{bal:.2f}" if bal is not None else "?"
         draw.text((PAD, y), bal_text, font=balance_font, fill=BLACK)
 
-        # Status badge — bordered, right-aligned
+        # Status badge (no border) — right-aligned
         bw, bh = _text_size(draw, status, badge_font)
-        bx = W - PAD - bw - 6  # 3px padding each side
-        by = y + 2  # align with baseline of large text
-
-        # Badge border
-        draw.rectangle([bx - 3, by - 1, bx + bw + 2, by + bh + 1], outline=BLACK)
+        bx = W - PAD - bw
+        by = y + 4  # align with balance baseline
         draw.text((bx, by), status, font=badge_font, fill=BLACK)
     else:
         status = ds.get("raw_status", "error")
