@@ -1,11 +1,13 @@
 # quote0-burnout
 
-Minimal AI usage display for MindReset Quote/0. Shows Codex and DeepSeek status.
+Minimal AI usage display for MindReset Quote/0 — Codex + DeepSeek on e-ink.
+
+v0.2 renders a 296×152 B&W PNG and pushes via Quote/0 Image API.
 
 ## Install
 
 ```bash
-pip install requests
+pip install -r requirements.txt
 # CodexBar must also be installed and working:
 codexbar usage --provider codex --format json
 ```
@@ -27,17 +29,25 @@ source .env
 | `DEEPSEEK_API_KEY` | No | DeepSeek API key |
 | `CODEXBAR_BIN` | No | Path to CodexBar CLI (default: `codexbar`) |
 
-## Run
+### Dot. App setup
+
+In Content Studio, add **Image API content** to the device task for Image mode,
+or **Text API content** for `--text` fallback.
+
+## Usage
 
 ```bash
-python quote0_usage.py
+python display.py              # Image API (default, 296×152 PNG)
+python display.py --preview    # Save PNG to /tmp/ without pushing
+python display.py --text       # Text API fallback (v0.1 compat)
+python quote0_usage.py         # Standalone Text API (v0.1)
 ```
 
 ## Schedule
 
-**cron** (every 10 min):
+**cron** (every 5 min):
 ```
-*/10 * * * * /bin/bash /path/to/quote0-burnout/run.sh >> /tmp/quote0-burnout.log 2>&1
+*/5 * * * * /bin/bash /path/to/quote0-burnout/run.sh >> /tmp/quote0-burnout.log 2>&1
 ```
 
 **macOS launchd** — copy `com.ajax.quote0-burnout.plist.example` to `~/Library/LaunchAgents/`, edit the `Program` path to match your checkout, then:
@@ -55,19 +65,9 @@ source .env && echo "API key length: ${#QUOTE0_API_KEY}"
 codexbar usage --provider codex --format json | python3 -m json.tool > /dev/null \
   && echo "CodexBar OK" || echo "CodexBar FAIL"
 
-# test script
-python quote0_usage.py
-```
+# preview only (no push)
+python display.py --preview
 
-## Success
-
-After first run, Quote/0 shows:
-
-```
-AI Usage
-
-Codex     OK
-DeepSeek  $18.42
-
-15:36
+# full push
+python display.py
 ```
