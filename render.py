@@ -97,11 +97,11 @@ def _render_v4(draw: ImageDraw.ImageDraw, snapshot: dict):
     div1_y = PAD + th + 5
     draw.line([(PAD, div1_y), (W - PAD, div1_y)], fill=BLACK, width=1)
 
-    # ── Codex section (taller, more spacing) ───────────────────────────────
+    # ── Codex section ───────────────────────────────────────────────────
     y = div1_y + 6
     draw.text((PAD, y), "CODEX", font=section_font, fill=BLACK)
     _, sh = _text_size(draw, "CODEX", section_font)
-    y += sh + 4
+    y += sh + 6
 
     if cx.get("ok"):
         short_label = cx.get("short_label", "?")
@@ -110,41 +110,42 @@ def _render_v4(draw: ImageDraw.ImageDraw, snapshot: dict):
 
         pct_text = f"{short_pct}%" if short_pct is not None else "?"
 
-        lw, lh = _text_size(draw, short_label, row_font)
+        # Use widest label as fixed offset so bars align
+        lw_short, lh = _text_size(draw, short_label, row_font)
+        long_label = cx.get("long_label", "?")
+        lw_long, _ = _text_size(draw, long_label, row_font)
+        label_w = max(lw_short, lw_long)
 
-        # Bar: label + gap + bar + gap + percentage
-        bar_x = PAD + lw + 6
+        bar_x = PAD + label_w + 8
         bar_w = 62
         bar_h = lh - 2
-        _draw_bar(draw, bar_x, y + 2, bar_w, bar_h, short_pct)
 
-        pctx = bar_x + bar_w + 6
+        # Short window row: label + bar + pct, reset right-aligned
+        _draw_bar(draw, bar_x, y + 2, bar_w, bar_h, short_pct)
+        pctx = bar_x + bar_w + 8
 
         draw.text((PAD, y), short_label, font=row_font, fill=BLACK)
         draw.text((pctx, y), pct_text, font=row_font, fill=BLACK)
 
-        y += lh + 6
-
-        # Reset time on its own line below, right-aligned
+        # Reset time — same line, right-aligned
         if short_reset and short_reset != "?":
             reset_font = _font(11)
-            reset_w, reset_h = _text_size(draw, short_reset, reset_font)
+            reset_w, _ = _text_size(draw, short_reset, reset_font)
             draw.text((W - PAD - reset_w, y), short_reset, font=reset_font, fill=BLACK)
-            y += reset_h + 4
-        else:
-            y += 2
+
+        y += lh + 8
 
         # Long window row
-        long_label = cx.get("long_label", "?")
         long_pct = cx.get("long_used_percent")
-
         if long_pct is not None:
             long_pct_text = f"{long_pct}%"
-            llw, llh = _text_size(draw, long_label, row_font)
             _draw_bar(draw, bar_x, y + 2, bar_w, bar_h, long_pct)
             draw.text((PAD, y), long_label, font=row_font, fill=BLACK)
             draw.text((pctx, y), long_pct_text, font=row_font, fill=BLACK)
-            y += llh + 4
+            y += lh + 8
+
+        # Empty line after Week before divider
+        y += 4
     else:
         status = cx.get("raw_status", "error")
         draw.text((PAD, y), status, font=row_font, fill=BLACK)
