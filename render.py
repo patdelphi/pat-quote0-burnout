@@ -1,21 +1,17 @@
 """
-Render a 296×152 pure black/white PNG for Quote/0.
+Render a 296×152 pure black/white PNG for Quote/0 e-ink display.
 
-v0.4: accepts a snapshot dict with structured codex/deepseek data.
-      Falls back to legacy string mode for backward compat.
-
-Layout:
-┌──────────────────────────────┐
-│ AI BURNOUT              16:40│
-│                              │
-│ CODEX                        │
-│ 5h   ███████░░░   72%        │
-│                 2h13m        │
-│ Wk   ████░░░░░░   41%        │
-│                              │
-│ DEEPSEEK                     │
-│ $18.42                 OK    │
-└──────────────────────────────┘
+v0.4 E-Ink Design System (UI/UX Pro Max):
+  Style: E-Ink / Paper + Minimalist Monochrome
+  - Pure #000000 / #FFFFFF only
+  - Zero border-radius, no shadows, no gradients
+  - 4px black structural dividers (full-bleed)
+  - Typography-first: data in monospace, labels compact
+  - Instant transitions (no animation on e-ink)
+  - High contrast, WCAG AAA
+  Typography: Terminal CLI Monospace (12/14/16pt strict scale)
+  - Menlo 400 weight, line-height 1.2x for density
+  - Section headers 10pt, data 14pt, balance 20pt
 """
 
 from __future__ import annotations
@@ -34,7 +30,7 @@ FONT_PATH = "/System/Library/Fonts/Menlo.ttc"
 BLACK = 0
 WHITE = 255
 
-# ── Font helpers ──────────────────────────────────────────────────────────────
+# ── Font: strict 10/12/14/20 scale ────────────────────────────────────────
 
 def _font(size: int) -> ImageFont.FreeTypeFont:
     return ImageFont.truetype(FONT_PATH, size)
@@ -45,23 +41,23 @@ def _text_size(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFon
     return bbox[2] - bbox[0], bbox[3] - bbox[1]
 
 
-# ── Progress bar helper ───────────────────────────────────────────────────────
+# ── Progress bar (E-Ink: solid available, outline used) ───────────────────
 
 def _draw_bar(
     draw: ImageDraw.ImageDraw,
     x: int, y: int,
     bar_w: int, bar_h: int,
-    used_pct: int | None,
+    avail_pct: int | None,
     seg_count: int = 10,
 ):
-    """Draw a 10-segment progress bar. Solid = used, outline = remaining."""
+    """10-segment bar. Filled = available (remaining quota), outline = used."""
     seg_w = (bar_w - (seg_count - 1) * 2) // seg_count
     gap = 2
 
-    if used_pct is None:
+    if avail_pct is None:
         used_segs = 0
     else:
-        used_segs = max(0, min(seg_count, round(used_pct / seg_count)))
+        used_segs = max(0, min(seg_count, round(avail_pct / seg_count)))
 
     for i in range(seg_count):
         sx = x + i * (seg_w + gap)
@@ -71,98 +67,98 @@ def _draw_bar(
             draw.rectangle([sx, y, sx + seg_w - 1, y + bar_h - 1], outline=BLACK)
 
 
-# ── v0.4 Layout ────────────────────────────────────────────────────────────────
+# ── v0.4 E-Ink Dashboard ──────────────────────────────────────────────────
 
 def _render_v4(draw: ImageDraw.ImageDraw, snapshot: dict):
-    """Render v0.4 dashboard layout."""
-    title_font = _font(14)
-    section_font = _font(11)
-    row_font = _font(13)
-    balance_font = _font(22)
-    badge_font = _font(12)
+    """E-Ink dashboard — monochrome, typography-first, 4px dividers."""
+    title_font   = _font(14)
+    label_font   = _font(10)   # Section headers
+    data_font    = _font(14)   # Data rows
+    reset_font   = _font(12)
+    balance_font = _font(20)
+    badge_font   = _font(12)
 
     cx = snapshot.get("codex", {})
     ds = snapshot.get("deepseek", {})
     updated = snapshot.get("updated_at", datetime.now().strftime("%H:%M"))
 
-    # ── Title bar ──────────────────────────────────────────────────────────
+    # ── Title bar ──────────────────────────────────────────────────────
     title = "AI BURNOUT"
     draw.text((PAD, PAD), title, font=title_font, fill=BLACK)
     _, th = _text_size(draw, title, title_font)
 
-    ts_font = _font(12)
-    tsw, _ = _text_size(draw, updated, ts_font)
-    draw.text((W - PAD - tsw, PAD + 1), updated, font=ts_font, fill=BLACK)
+    tsw, _ = _text_size(draw, updated, reset_font)
+    draw.text((W - PAD - tsw, PAD + 1), updated, font=reset_font, fill=BLACK)
 
-    div1_y = PAD + th + 5
-    draw.line([(PAD, div1_y), (W - PAD, div1_y)], fill=BLACK, width=1)
+    # 4px structural divider
+    div_y = PAD + th + 5
+    draw.rectangle([PAD, div_y, W - PAD, div_y + 3], fill=BLACK)
 
-    # ── Codex section ───────────────────────────────────────────────────
-    y = div1_y + 6
-    draw.text((PAD, y), "CODEX", font=section_font, fill=BLACK)
-    _, sh = _text_size(draw, "CODEX", section_font)
-    y += sh + 6
+    # ── CODEX ──────────────────────────────────────────────────────────
+    y = div_y + 7
+
+    # Compact section header
+    draw.text((PAD, y), "CODEX", font=label_font, fill=BLACK)
+    _, sh = _text_size(draw, "CODEX", label_font)
+    y += sh + 4
 
     if cx.get("ok"):
         short_label = cx.get("short_label", "?")
-        short_pct = cx.get("short_used_percent")
+        short_used = cx.get("short_used_percent")
+        short_rem = (100 - short_used) if short_used is not None else None
         short_reset = cx.get("short_reset", "?")
 
-        # Show remaining, not used (codex web style)
-        short_rem = (100 - short_pct) if short_pct is not None else None
         rem_text = f"{short_rem}%" if short_rem is not None else "?"
 
-        # Bar: filled = available (remaining), empty = used
-        lw_short, lh = _text_size(draw, short_label, row_font)
+        # Bar alignment: fixed width labels
+        lw_s, lh = _text_size(draw, short_label, data_font)
         long_label = cx.get("long_label", "?")
-        lw_long, _ = _text_size(draw, long_label, row_font)
-        label_w = max(lw_short, lw_long)
+        lw_l, _ = _text_size(draw, long_label, data_font)
+        label_w = max(lw_s, lw_l)
 
         bar_x = PAD + label_w + 8
         bar_w = 110
-        bar_h = lh  # doubled: full row height
+        bar_h = lh  # Full row height
 
-        # Short window row: label + bar + remaining%, reset right-aligned
+        # Short row: label + bar + rem%, reset right-aligned
         _draw_bar(draw, bar_x, y, bar_w, bar_h, short_rem)
         pctx = bar_x + bar_w + 8
 
-        draw.text((PAD, y), short_label, font=row_font, fill=BLACK)
-        draw.text((pctx, y), rem_text, font=row_font, fill=BLACK)
+        draw.text((PAD, y), short_label, font=data_font, fill=BLACK)
+        draw.text((pctx, y), rem_text, font=data_font, fill=BLACK)
 
-        # Reset time — same line, right-aligned
         if short_reset and short_reset != "?":
-            reset_font = _font(11)
-            reset_w, _ = _text_size(draw, short_reset, reset_font)
-            draw.text((W - PAD - reset_w, y), short_reset, font=reset_font, fill=BLACK)
+            rw, _ = _text_size(draw, short_reset, reset_font)
+            draw.text((W - PAD - rw, y + 1), short_reset, font=reset_font, fill=BLACK)
 
-        y += lh + 8
+        y += lh + 6
 
-        # Long window row
-        long_pct = cx.get("long_used_percent")
-        if long_pct is not None:
-            long_rem = 100 - long_pct
-            long_rem_text = f"{long_rem}%"
+        # Long row
+        long_used = cx.get("long_used_percent")
+        if long_used is not None:
+            long_rem = 100 - long_used
             _draw_bar(draw, bar_x, y, bar_w, bar_h, long_rem)
-            draw.text((PAD, y), long_label, font=row_font, fill=BLACK)
-            draw.text((pctx, y), long_rem_text, font=row_font, fill=BLACK)
-            y += lh + 8
+            draw.text((PAD, y), long_label, font=data_font, fill=BLACK)
+            draw.text((pctx, y), f"{long_rem}%", font=data_font, fill=BLACK)
+            y += lh + 6
 
-        # Empty line after Week before divider
-        y += 4
+        # Breathing room
+        y += 2
     else:
         status = cx.get("raw_status", "error")
-        draw.text((PAD, y), status, font=row_font, fill=BLACK)
-        _, eh = _text_size(draw, status, row_font)
+        draw.text((PAD, y), status, font=data_font, fill=BLACK)
+        _, eh = _text_size(draw, status, data_font)
         y += eh + 4
 
-    # Divider between sections
+    # 2px hairline divider between sections
     y += 2
-    draw.line([(PAD, y), (W - PAD, y)], fill=BLACK, width=1)
+    draw.rectangle([PAD, y, W - PAD, y + 1], fill=BLACK)
+
+    # ── DEEPSEEK ───────────────────────────────────────────────────────
     y += 6
 
-    # ── DeepSeek section ───────────────────────────────────────────────────
-    draw.text((PAD, y), "DEEPSEEK", font=section_font, fill=BLACK)
-    _, sh = _text_size(draw, "DEEPSEEK", section_font)
+    draw.text((PAD, y), "DEEPSEEK", font=label_font, fill=BLACK)
+    _, sh = _text_size(draw, "DEEPSEEK", label_font)
     y += sh + 4
 
     if ds.get("ok"):
@@ -173,20 +169,17 @@ def _render_v4(draw: ImageDraw.ImageDraw, snapshot: dict):
         bal_text = f"{sym}{bal:.2f}" if bal is not None else "?"
         draw.text((PAD, y), bal_text, font=balance_font, fill=BLACK)
 
-        # Status badge (no border) — right-aligned
-        bw, bh = _text_size(draw, status, badge_font)
-        bx = W - PAD - bw
-        by = y + 4  # align with balance baseline
-        draw.text((bx, by), status, font=badge_font, fill=BLACK)
+        # Status badge — text only, right-aligned, no border (E-Ink: clean)
+        bw, _ = _text_size(draw, status, badge_font)
+        draw.text((W - PAD - bw, y + 5), status, font=badge_font, fill=BLACK)
     else:
         status = ds.get("raw_status", "error")
-        draw.text((PAD, y), status, font=row_font, fill=BLACK)
+        draw.text((PAD, y), status, font=data_font, fill=BLACK)
 
 
-# ── Legacy layout (v0.2–v0.3 compat) ──────────────────────────────────────────
+# ── Legacy layout (v0.2–v0.3 compat) ────────────────────────────────────
 
 def _render_legacy(draw: ImageDraw.ImageDraw, codex_text: str, deepseek_text: str):
-    """Legacy two-line layout for backward compat."""
     title_font = _font(16)
     body_font = _font(18)
     ts_font = _font(12)
@@ -208,14 +201,14 @@ def _render_legacy(draw: ImageDraw.ImageDraw, codex_text: str, deepseek_text: st
     draw.text((PAD + lw2 + 12, y2), deepseek_text, font=body_font, fill=BLACK)
 
     div_y = y2 + lh2 + 16
-    draw.line([(PAD, div_y), (W - PAD, div_y)], fill=BLACK, width=1)
+    draw.rectangle([PAD, div_y, W - PAD, div_y + 1], fill=BLACK)
 
     now = datetime.now().strftime("%H:%M")
-    tsw, tsh = _text_size(draw, now, ts_font)
+    tsw, _ = _text_size(draw, now, ts_font)
     draw.text((W - PAD - tsw, div_y + 8), now, font=ts_font, fill=BLACK)
 
 
-# ── Public API ────────────────────────────────────────────────────────────────
+# ── Public API ──────────────────────────────────────────────────────────
 
 def render_image(
     codex_text_or_snapshot: str | dict,
@@ -223,11 +216,8 @@ def render_image(
 ) -> bytes:
     """Return PNG bytes (296×152, pure B&W).
 
-    v0.4 (snapshot dict):
-        render_image({"codex": {...}, "deepseek": {...}, "updated_at": "16:40"})
-
-    Legacy (two strings):
-        render_image("95% 5h", "¥25.91")
+    v0.4 (snapshot dict): E-Ink dashboard layout
+    Legacy (two strings): backward compat
     """
     img = Image.new("L", (W, H), WHITE)
     draw = ImageDraw.Draw(img)
