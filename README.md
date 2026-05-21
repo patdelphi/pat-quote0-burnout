@@ -26,13 +26,32 @@ source .env
 |----------|----------|-------------|
 | `QUOTE0_API_KEY` | Yes | Quote/0 API key |
 | `QUOTE0_DEVICE_ID` | Yes | Quote/0 device ID |
+| `QUOTE0_IMAGE_TASK_KEY` | * | taskKey for Image API content slot |
+| `QUOTE0_TEXT_TASK_KEY` | * | taskKey for Text API content slot |
+| `QUOTE0_REFRESH_NOW` | No | Force immediate display (default: `false`; set `true` for manual push) |
 | `DEEPSEEK_API_KEY` | No | DeepSeek API key |
 | `CODEXBAR_BIN` | No | Path to CodexBar CLI (default: `codexbar`) |
+
+\\* *Required when multiple API content slots exist (e.g. fixed + loop). Find keys with:*
+
+```bash
+# List fixed content slots
+curl -H "Authorization: Bearer $QUOTE0_API_KEY" \
+  "https://dot.mindreset.tech/api/authV2/open/device/$QUOTE0_DEVICE_ID/fixed/list"
+
+# List loop content slots
+curl -H "Authorization: Bearer $QUOTE0_API_KEY" \
+  "https://dot.mindreset.tech/api/authV2/open/device/$QUOTE0_DEVICE_ID/loop/list"
+```
+
+Look for `"type": "IMAGE_API"` or `"type": "TEXT_API"` entries and copy their `"key"`.
 
 ### Dot. App setup
 
 In Content Studio, add **Image API content** to the device task for Image mode,
 or **Text API content** for `--text` fallback.
+
+**Fixed content mode:** if you placed the API content in a Fixed Content slot (not Loop), set `QUOTE0_REFRESH_NOW=false` so the device's schedule controls when to display it. The API only updates the slot's data.
 
 ## Usage
 

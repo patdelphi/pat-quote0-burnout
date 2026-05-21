@@ -25,6 +25,9 @@ QUOTE0_DEVICE_ID = os.environ["QUOTE0_DEVICE_ID"]
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 CODEXBAR_BIN = os.environ.get("CODEXBAR_BIN", "codexbar")
 
+QUOTE0_TEXT_TASK_KEY = os.environ.get("QUOTE0_TEXT_TASK_KEY", "")
+QUOTE0_REFRESH_NOW = os.environ.get("QUOTE0_REFRESH_NOW", "false").lower() == "true"
+
 
 # ── Codex ────────────────────────────────────────────────────────────────────
 
@@ -160,13 +163,16 @@ def push_quote0(payload):
         f"https://dot.mindreset.tech/api/authV2/open/device/"
         f"{QUOTE0_DEVICE_ID}/text"
     )
+    body = {"refreshNow": QUOTE0_REFRESH_NOW, **payload}
+    if QUOTE0_TEXT_TASK_KEY:
+        body["taskKey"] = QUOTE0_TEXT_TASK_KEY
     r = requests.post(
         url,
         headers={
             "Authorization": f"Bearer {QUOTE0_API_KEY}",
             "Content-Type": "application/json",
         },
-        json={"refreshNow": True, **payload},
+        json=body,
         timeout=20,
     )
     if not r.ok:

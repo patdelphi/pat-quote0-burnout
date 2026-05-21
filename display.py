@@ -30,6 +30,10 @@ QUOTE0_DEVICE_ID = os.environ["QUOTE0_DEVICE_ID"]
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 CODEXBAR_BIN = os.environ.get("CODEXBAR_BIN", "codexbar")
 
+QUOTE0_IMAGE_TASK_KEY = os.environ.get("QUOTE0_IMAGE_TASK_KEY", "")
+QUOTE0_TEXT_TASK_KEY = os.environ.get("QUOTE0_TEXT_TASK_KEY", "")
+QUOTE0_REFRESH_NOW = os.environ.get("QUOTE0_REFRESH_NOW", "false").lower() == "true"
+
 API_BASE = "https://dot.mindreset.tech"
 
 
@@ -171,10 +175,14 @@ def normalize_deepseek(ds):
 def push_image(png_bytes: bytes) -> dict:
     url = f"{API_BASE}/api/authV2/open/device/{QUOTE0_DEVICE_ID}/image"
     payload = {
-        "refreshNow": True,
+        "refreshNow": QUOTE0_REFRESH_NOW,
         "image": base64.b64encode(png_bytes).decode(),
-        "ditherType": "NONE",
+        "ditherType": "DIFFUSION",
+        "ditherKernel": "FLOYD_STEINBERG",
+        "border": 0,
     }
+    if QUOTE0_IMAGE_TASK_KEY:
+        payload["taskKey"] = QUOTE0_IMAGE_TASK_KEY
     r = requests.post(
         url,
         json=payload,
@@ -192,21 +200,24 @@ def push_image(png_bytes: bytes) -> dict:
 
 def push_text(payload: dict) -> dict:
     url = f"{API_BASE}/api/authV2/open/device/{QUOTE0_DEVICE_ID}/text"
+    body = {"refreshNow": QUOTE0_REFRESH_NOW, **payload}
+    if QUOTE0_TEXT_TASK_KEY:
+        body["taskKey"] = QUOTE0_TEXT_TASK_KEY
     r = requests.post(
         url,
         headers={
             "Authorization": f"Bearer {QUOTE0_API_KEY}",
             "Content-Type": "application/json",
         },
-        json={"refreshNow": True, **payload},
+        json=body,
         timeout=20,
     )
     if not r.ok:
         try:
-            body = r.json()
+            body_resp = r.json()
         except Exception:
-            body = {"_raw": r.text}
-        return {"ok": False, "status": r.status_code, "body": body}
+            body_resp = {"_raw": r.text}
+        return {"ok": False, "status": r.status_code, "body": body_resp}
     return {"ok": True, "body": r.json()}
 
 
