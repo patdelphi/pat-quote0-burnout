@@ -292,8 +292,12 @@ def _time_until(val) -> str:
         return "now"
     h, rem = divmod(secs, 3600)
     m = rem // 60
+    if h >= 24:
+        d = h // 24
+        h = h % 24
+        return f"{d}d{h}h" if h > 0 else f"{d}d"
     if h > 0:
-        return f"{h}h{m:02d}m"
+        return f"{h}h{m:02d}m" if m > 0 else f"{h}h"
     return f"{m}m"
 
 

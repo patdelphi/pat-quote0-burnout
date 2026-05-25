@@ -21,7 +21,7 @@ OP_FONT    = Path(__file__).parent / "PixelOperator.ttf"
 VCR_FONT   = Path(__file__).parent / "VCR_OSD_MONO_1.001.ttf"
 LOGO_CODEX    = Image.open(Path(__file__).parent / "logo_codex.png").convert("1")
 LOGO_DEEPSEEK = Image.open(Path(__file__).parent / "logo_deepseek.png").convert("1")
-LOGO_W = 12
+LOGO_W = 16
 LOGO_GAP = 4
 LABEL_X = PAD + LOGO_W + LOGO_GAP  # text starts after logo + gap
 
