@@ -4,3 +4,5 @@ __pycache__/
 *.pyc
 *.pyo
 /tmp/
+preview.png
+preview_v3.png

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-quote0-burnout v0.4 — fetch usage, build snapshot, render dashboard, push to Quote/0.
+quote0-burnout v0.5 — fetch usage, build snapshot, render dashboard, push to Quote/0.
 
 Usage:
   python display.py                   # Image API (default)
@@ -37,7 +37,6 @@ def _env(key: str, default: str = "") -> str:
 QUOTE0_API_KEY     = _env("QUOTE0_API_KEY")
 QUOTE0_DEVICE_ID   = _env("QUOTE0_DEVICE_ID")
 DEEPSEEK_API_KEY   = _env("DEEPSEEK_API_KEY")
-CODEXBAR_BIN       = _env("CODEXBAR_BIN", "codexbar")
 QUOTE0_REFRESH_NOW = _env("QUOTE0_REFRESH_NOW", "false").lower() == "true"
 
 QUOTE0_IMAGE_TASK_KEY = _env("QUOTE0_IMAGE_TASK_KEY")
@@ -87,29 +86,54 @@ def _window_label(minutes: int | None) -> str:
 
 # ── Fetch ─────────────────────────────────────────────────────────────────────
 
-def get_codex_usage():
-    try:
-        raw = subprocess.check_output(
-            [CODEXBAR_BIN, "usage", "--provider", "codex", "--format", "json", "--source", "cli"],
-            text=True,
-            timeout=20,
-            stderr=subprocess.PIPE,
+CODEX_AUTH_PATH = Path.home() / ".codex" / "auth.json"
+CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
+
+
+def _load_codex_token():
+    """Return (access_token, account_id). Env var takes priority over auth.json."""
+    env_token = os.environ.get("CODEX_ACCESS_TOKEN", "").strip()
+    if env_token:
+        return env_token, os.environ.get("CODEX_ACCOUNT_ID", "").strip()
+
+    if not CODEX_AUTH_PATH.exists():
+        raise FileNotFoundError(
+            f"No Codex credentials at {CODEX_AUTH_PATH}. "
+            "Run `codex` to authenticate first, or set CODEX_ACCESS_TOKEN in .env."
         )
-        try:
-            data = json.loads(raw)
-        except Exception:
-            return {"ok": False, "status": "parse error", "detail": raw[:200]}
+    with open(CODEX_AUTH_PATH) as f:
+        auth = json.load(f)
+    tokens = auth.get("tokens", {})
+    return tokens.get("access_token", ""), tokens.get("account_id", "")
 
-        entry = data[0] if isinstance(data, list) and data else data
-        return {"ok": True, "raw": entry}
 
-    except FileNotFoundError:
-        return {"ok": False, "status": "no codexbar"}
-    except subprocess.TimeoutExpired:
+def get_codex_usage():
+    """Fetch OpenAI Codex usage via direct API (no codexbar dependency)."""
+    try:
+        access_token, account_id = _load_codex_token()
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Accept": "application/json",
+            "User-Agent": "quote0-burnout",
+        }
+        if account_id:
+            headers["ChatGPT-Account-Id"] = account_id
+
+        r = requests.get(CODEX_USAGE_URL, headers=headers, timeout=15)
+        r.raise_for_status()
+        return {"ok": True, "raw": r.json()}
+
+    except FileNotFoundError as e:
+        return {"ok": False, "status": "no auth", "detail": str(e)}
+    except requests.Timeout:
         return {"ok": False, "status": "timeout"}
-    except subprocess.CalledProcessError as e:
-        detail = (e.stderr or e.stdout or "").strip()[:200]
-        return {"ok": False, "status": "error", "detail": detail}
+    except requests.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.response.text[:200]
+        except Exception:
+            pass
+        return {"ok": False, "status": f"HTTP {e.response.status_code}", "detail": detail}
     except Exception as e:
         return {"ok": False, "status": "error", "detail": str(e)[:200]}
 
@@ -157,7 +181,7 @@ CURRENCY_SYMBOLS = {"USD": "$", "CNY": "¥", "EUR": "€", "GBP": "£"}
 
 
 def build_codex_snapshot(codex: dict) -> dict:
-    """Build structured codex snapshot from raw codexbar data."""
+    """Build structured codex snapshot from wham API response."""
     if not codex.get("ok"):
         status = codex.get("status", "error")
         return {
@@ -172,23 +196,18 @@ def build_codex_snapshot(codex: dict) -> dict:
         }
 
     raw = codex.get("raw", {})
-    usage = raw.get("usage", {}) if isinstance(raw, dict) else {}
+    rate_limit = raw.get("rate_limit", {})
 
-    primary = usage.get("primary", {})
-    secondary = usage.get("secondary", {})
+    primary = rate_limit.get("primary_window", {})
+    secondary = rate_limit.get("secondary_window", {})
 
-    short_pct = primary.get("usedPercent")
-    short_min = primary.get("windowMinutes")
-    short_reset_iso = primary.get("resetsAt")
+    short_pct = primary.get("used_percent")
+    short_reset_ts = primary.get("reset_at")
 
-    long_pct = secondary.get("usedPercent")
-    long_min = secondary.get("windowMinutes")
+    long_pct = secondary.get("used_percent")
+    long_reset_ts = secondary.get("reset_at")
 
-    # Fallback: old flat fields
-    if short_pct is None:
-        short_pct = raw.get("percent") or raw.get("usage_percent") or raw.get("remaining_percent")
-
-    # percent can be int or float; normalize to int
+    # percent is float from API; normalize to int
     try:
         short_pct = int(float(short_pct)) if short_pct is not None else None
     except (ValueError, TypeError):
@@ -200,11 +219,12 @@ def build_codex_snapshot(codex: dict) -> dict:
 
     return {
         "ok": True,
-        "short_label": _window_label(short_min),
+        "short_label": "5h",
         "short_used_percent": short_pct,
-        "short_reset": _time_until(short_reset_iso) if short_reset_iso else "?",
-        "long_label": _window_label(long_min) if long_min else "?",
-        "long_used_percent": long_pct if long_min else None,
+        "short_reset": _time_until(short_reset_ts) if short_reset_ts else "?",
+        "long_label": "Week",
+        "long_used_percent": long_pct,
+        "long_reset": _time_until(long_reset_ts) if long_reset_ts else "?",
         "status": _pct_status(short_pct),
         "raw_status": "",
     }
@@ -255,11 +275,15 @@ def build_snapshot() -> dict:
 
 # ── Legacy normalize (v0.2–v0.3 compat) ───────────────────────────────────────
 
-def _time_until(iso_str: str | None) -> str:
-    if not iso_str:
+def _time_until(val) -> str:
+    """Human-readable countdown from ISO string or unix timestamp (int/float)."""
+    if val is None:
         return "?"
     try:
-        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+        if isinstance(val, (int, float)):
+            dt = datetime.fromtimestamp(val, tz=timezone.utc)
+        else:
+            dt = datetime.fromisoformat(str(val).replace("Z", "+00:00"))
     except Exception:
         return "?"
     delta = dt - datetime.now(timezone.utc)
@@ -279,19 +303,14 @@ def normalize_codex(codex):
         return codex.get("status", "unknown")
 
     raw = codex.get("raw", {})
-    usage = raw.get("usage", {}) if isinstance(raw, dict) else {}
+    rate_limit = raw.get("rate_limit", {})
 
-    primary = usage.get("primary", {})
-    pct = primary.get("usedPercent")
-    resets = primary.get("resetsAt")
+    primary = rate_limit.get("primary_window", {})
+    pct = primary.get("used_percent")
+    resets = primary.get("reset_at")
 
-    secondary = usage.get("secondary", {})
-    sec_pct = secondary.get("usedPercent")
-    window_m = secondary.get("windowMinutes", 0)
-
-    # Fallback old flat fields
-    if pct is None:
-        pct = raw.get("percent") or raw.get("usage_percent") or raw.get("remaining_percent")
+    secondary = rate_limit.get("secondary_window", {})
+    sec_pct = secondary.get("used_percent")
 
     if pct is None:
         return "OK"
@@ -300,10 +319,7 @@ def normalize_codex(codex):
     if resets:
         parts.append(_time_until(resets))
     if sec_pct is not None:
-        if window_m >= 10080:
-            parts.append(f"Wk {float(sec_pct):.0f}%")
-        elif window_m >= 1440:
-            parts.append(f"{float(sec_pct):.0f}%")
+        parts.append(f"Wk {float(sec_pct):.0f}%")
 
     return " · ".join(parts)
 
@@ -419,7 +435,6 @@ def run(preview: bool = False, text_mode: bool = False):
 
         now = snapshot["updated_at"]
         payload = {
-            "title": "AI Usage",
             "message": f"Codex {cx_text}\nDeepSeek {ds_text}",
             "signature": now,
         }
@@ -493,13 +508,10 @@ def check() -> int:
         ("QUOTE0_IMAGE_TASK_KEY", QUOTE0_IMAGE_TASK_KEY, False),
         ("QUOTE0_TEXT_TASK_KEY",  QUOTE0_TEXT_TASK_KEY,  False),
         ("DEEPSEEK_API_KEY",      DEEPSEEK_API_KEY,      False),
-        ("CODEXBAR_BIN",          CODEXBAR_BIN,          False),
     ]
 
     for name, val, required in env_vars:
-        if name == "CODEXBAR_BIN":
-            print(_status(name, True, val))
-        elif val:
+        if val:
             masked = val[:3] + "..." if len(val) > 6 else val
             print(_status(name, True, masked))
         elif required:
@@ -510,30 +522,24 @@ def check() -> int:
 
     print()
 
-    # ── CodexBar ───────────────────────────────────────────────────────────
-    print("CodexBar:")
-
-    binary_ok = False
+    # ── Codex (direct API) ──────────────────────────────────────────────────
+    print("Codex:")
+    auth_ok = False
     try:
-        result = subprocess.run(
-            [CODEXBAR_BIN, "--version"],
-            capture_output=True, text=True, timeout=10,
-        )
-        if result.returncode == 0:
-            ver = result.stdout.strip().split()[-1] if result.stdout.strip() else "?"
-            print(_status("binary", True, ver))
-            binary_ok = True
+        token, acct = _load_codex_token()
+        if token:
+            acct_str = f" (acct {acct[:8]}...)" if acct else ""
+            print(_status("auth", True, f"token loaded{acct_str}"))
+            auth_ok = True
         else:
-            print(_status("binary", False, "exit code " + str(result.returncode)))
-    except FileNotFoundError:
-        print(_status("binary", False, "no codexbar found"))
-    except subprocess.TimeoutExpired:
-        print(_status("binary", False, "timeout"))
+            print(_status("auth", False, "empty token"))
+    except FileNotFoundError as e:
+        print(_status("auth", False, str(e)))
     except Exception as e:
-        print(_status("binary", False, str(e)))
+        print(_status("auth", False, str(e)))
 
     codex_ok = False
-    if binary_ok:
+    if auth_ok:
         codex = get_codex_usage()
         sn_codex = build_codex_snapshot(codex)
         if sn_codex["ok"]:
@@ -545,7 +551,7 @@ def check() -> int:
         else:
             print(_status("usage", False, sn_codex["raw_status"]))
     else:
-        print(_status("usage", False, "binary not found"))
+        print(_status("usage", False, "no auth"))
 
     print()
 

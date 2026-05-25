@@ -4,32 +4,33 @@ Minimal AI usage dashboard for MindReset Quote/0 — Codex + DeepSeek on e-ink.
 
 v0.4 renders a compact 296×152 B&W dashboard with progress bars and status indicators.
 
-## v0.4 Layout
+## v0.8 Layout
 
 ```
 ┌──────────────────────────────┐
-│ AI BURNOUT              16:40│
+│                        16:40 │
 │                              │
-│ CODEX                        │
-│ 5h  ███████░░░ 72%  2h13m    │
-│ Wk  ████░░░░░░ 41%           │
-│                              │
-│ DEEPSEEK                     │
-│ $18.42                 OK    │
+│ ◆ CODEX                      │
+│ 28% - reset 2h13m            │  ← remaining (not used)
+│ ███░░░░░░░░░░░░░░░           │  ← bar = remaining
+│ 5h                  Week 41% │
+│ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─  │
+│ ◆ DEEPSEEK                   │
+│ $18.42                  OK   │
 └──────────────────────────────┘
 ```
 
-- **Codex**: short-window usage + weekly usage with progress bars (solid = used, outline = remaining)
-- **DeepSeek**: balance with status badge (OK / WARN / HOT)
-- Percentages are **used** percentages, not remaining. High = close to burnout.
-- Status levels: `ok` (<70%), `warn` (70–89%), `hot` (≥90%)
+- **Codex**: remaining percentage with progress bar. 28% = 28% left (72% used).
+- **DeepSeek**: balance with status badge (OK / WARN / HOT).
+- All text: PixelOperator 16px. Timestamp: Minecraftia 8px.
+- Status levels: `ok` (<70% used), `warn` (70–89% used), `hot` (≥90% used).
 
 ## Install
 
 ```bash
 pip install -r requirements.txt
-# CodexBar must also be installed and working:
-codexbar usage --provider codex --format json --source cli
+# Codex auth auto-reads ~/.codex/auth.json (from codex CLI login)
+# Or set CODEX_ACCESS_TOKEN in .env to override
 ```
 
 ## Configure
@@ -50,7 +51,8 @@ source .env
 | `QUOTE0_TEXT_TASK_KEY` | No | taskKey for Text API content slot |
 | `QUOTE0_REFRESH_NOW` | No | Force immediate display (`true` for manual push, `false` for scheduled) |
 | `DEEPSEEK_API_KEY` | No | DeepSeek API key |
-| `CODEXBAR_BIN` | No | Path to CodexBar CLI (default: `codexbar`) |
+| `CODEX_ACCESS_TOKEN` | No | Override Codex OAuth token (auto-read from ~/.codex/auth.json) |
+| `CODEX_ACCOUNT_ID` | No | Codex account ID for ChatGPT-Account-Id header |
 | `QUOTE0_PREVIEW_PATH` | No | Preview image path (default: `/tmp/quote0_burnout_preview.png`) |
 
 ### Dot. App setup
