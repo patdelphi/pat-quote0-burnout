@@ -2,7 +2,9 @@
 
 Minimal AI usage dashboard for MindReset Quote/0 — OpenAI Codex + DeepSeek on e-ink.
 
-![Preview](preview.png)
+![Preview](docs/preview.jpg)
+
+![Example render](docs/example.png)
 
 ## Current Layout (v0.6)
 
