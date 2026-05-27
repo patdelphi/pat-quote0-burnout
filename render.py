@@ -16,11 +16,11 @@ W, H = 296, 152
 PAD = 10
 
 FONT_PATH = "/System/Library/Fonts/Menlo.ttc"
-PIXEL_FONT = Path(__file__).parent / "Minecraftia-Regular.ttf"
-OP_FONT    = Path(__file__).parent / "PixelOperator.ttf"
-VCR_FONT   = Path(__file__).parent / "VCR_OSD_MONO_1.001.ttf"
-LOGO_CODEX    = Image.open(Path(__file__).parent / "logo_codex.png").convert("1")
-LOGO_DEEPSEEK = Image.open(Path(__file__).parent / "logo_deepseek.png").convert("1")
+PIXEL_FONT = Path(__file__).parent / "assets" / "fonts" / "Minecraftia-Regular.ttf"
+OP_FONT    = Path(__file__).parent / "assets" / "fonts" / "PixelOperator.ttf"
+VCR_FONT   = Path(__file__).parent / "assets" / "fonts" / "VCR_OSD_MONO_1.001.ttf"
+LOGO_CODEX    = Image.open(Path(__file__).parent / "assets" / "logos" / "codex.png").convert("1")
+LOGO_DEEPSEEK = Image.open(Path(__file__).parent / "assets" / "logos" / "deepseek.png").convert("1")
 LOGO_W = 16
 LOGO_GAP = 4
 LABEL_X = PAD + LOGO_W + LOGO_GAP  # text starts after logo + gap
@@ -251,6 +251,6 @@ if __name__ == "__main__":
         "updated_at": "16:40",
     }
     png = render_image(snap)
-    out = Path(__file__).parent / "preview.png"
+    out = Path(__file__).parent / "test_render.png"
     out.write_bytes(png)
     print(f"Saved {out} ({len(png)} bytes)")

@@ -1,43 +1,53 @@
 # quote0-burnout
 
-Minimal AI usage dashboard for MindReset Quote/0 — Codex + DeepSeek on e-ink.
+Minimal AI usage dashboard for MindReset Quote/0 — OpenAI Codex + DeepSeek on e-ink.
 
-v0.4 renders a compact 296×152 B&W dashboard with progress bars and status indicators.
+![Preview](preview.png)
 
-## v0.8 Layout
+## Current Layout (v0.6)
 
 ```
-┌──────────────────────────────┐
-│                        16:40 │
-│                              │
-│ ◆ CODEX                      │
-│ 28% - reset 2h13m            │  ← remaining (not used)
-│ ███░░░░░░░░░░░░░░░           │  ← bar = remaining
-│ 5h                  Week 41% │
-│ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─  │
-│ ◆ DEEPSEEK                   │
-│ $18.42                  OK   │
-└──────────────────────────────┘
+                        16:40
+◆ CODEX
+5h  [████████████░░░░░] 89%  4h41m
+Week [████████░░░░░░░░] 69%  5d23h
+─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
+◆ DEEPSEEK
+$18.42                        OK
 ```
 
-- **Codex**: remaining percentage with progress bar. 28% = 28% left (72% used).
-- **DeepSeek**: balance with status badge (OK / WARN / HOT).
-- All text: PixelOperator 16px. Timestamp: Minecraftia 8px.
-- Status levels: `ok` (<70% used), `warn` (70–89% used), `hot` (≥90% used).
+- **Codex**: two rows (5h / Week) each with inline dot-grid progress bar. Bar fills = remaining%, text = remaining% + reset countdown.
+- **DeepSeek**: balance in VCR OSD Mono 21px + status badge, bottom-aligned.
+- **Fonts**: PixelOperator 16px (labels, rows, status), VCR OSD Mono 21px (balance), Minecraftia 8px (timestamp).
+- **Divider**: 6px dash / 4px gap.
+- **Time format**: ≥24h → XdXXh (e.g. 5d22h).
+
+## How Codex data is fetched
+
+Direct OAuth API call — **no CLI dependency**:
+
+```
+GET https://chatgpt.com/backend-api/wham/usage
+Authorization: Bearer <token>
+ChatGPT-Account-Id: <account_id>
+```
+
+Token auto-reads from `~/.codex/auth.json` (set by `codex` CLI login).
+Override with `CODEX_ACCESS_TOKEN` + `CODEX_ACCOUNT_ID` env vars.
 
 ## Install
 
 ```bash
 pip install -r requirements.txt
-# Codex auth auto-reads ~/.codex/auth.json (from codex CLI login)
-# Or set CODEX_ACCESS_TOKEN in .env to override
+# Ensure codex CLI is authenticated (one-time):
+codex
 ```
 
 ## Configure
 
 ```bash
 cp config.example.env .env
-# edit .env with real keys
+# edit .env with your keys
 source .env
 ```
 
@@ -47,50 +57,40 @@ source .env
 |----------|----------|-------------|
 | `QUOTE0_API_KEY` | Yes | Quote/0 API key |
 | `QUOTE0_DEVICE_ID` | Yes | Quote/0 device ID |
-| `QUOTE0_IMAGE_TASK_KEY` | No | taskKey for Image API content slot (only needed with multiple cards) |
-| `QUOTE0_TEXT_TASK_KEY` | No | taskKey for Text API content slot |
-| `QUOTE0_REFRESH_NOW` | No | Force immediate display (`true` for manual push, `false` for scheduled) |
+| `QUOTE0_IMAGE_TASK_KEY` | No | taskKey for Image API slot (only with multiple cards) |
 | `DEEPSEEK_API_KEY` | No | DeepSeek API key |
 | `CODEX_ACCESS_TOKEN` | No | Override Codex OAuth token (auto-read from ~/.codex/auth.json) |
 | `CODEX_ACCOUNT_ID` | No | Codex account ID for ChatGPT-Account-Id header |
-| `QUOTE0_PREVIEW_PATH` | No | Preview image path (default: `/tmp/quote0_burnout_preview.png`) |
+| `QUOTE0_REFRESH_NOW` | No | Force immediate display (`true` for manual, `false` for scheduled) |
 
 ### Dot. App setup
 
 In Content Studio, add a single **Image API content** card to the device task.
-Keep only one IMAGE_API card — the script pushes without `taskKey` and targets
-the sole slot automatically.
+Keep only one IMAGE_API card — the script pushes without `taskKey`.
 
 ## Usage
 
 ```bash
-# Debug — print structured snapshot as JSON
-python display.py --debug-json
+# Preview — render PNG locally, no push
+python display.py --preview
 
-# Self-check — tests everything without pushing
+# Push to device
+python display.py
+
+# Self-check — test everything without pushing
 python display.py --check
+
+# Debug — print snapshot JSON
+python display.py --debug-json
 
 # List task slots
 python display.py --list-tasks
-python display.py --list-tasks fixed
-python display.py --list-tasks loop
-
-# Preview only — render PNG locally, no push
-python display.py --preview
-open /tmp/quote0_burnout_preview.png
-
-# Push to Quote/0 (Image API)
-python display.py
-
-# Text API fallback (v0.1 legacy)
-python display.py --text
-python quote0_usage.py              # legacy standalone Text API
 ```
 
-## Schedule
+## Schedule (macOS launchd)
 
-**macOS launchd** — copy `com.ajax.quote0-burnout.plist.example` to
-`~/Library/LaunchAgents/`, edit the `Program` path to match your checkout, then:
+Copy `scripts/com.ajax.quote0-burnout.plist.example` to `~/Library/LaunchAgents/`,
+edit the `Program` path, then:
 
 ```bash
 launchctl load ~/Library/LaunchAgents/com.ajax.quote0-burnout.plist
@@ -98,76 +98,29 @@ launchctl load ~/Library/LaunchAgents/com.ajax.quote0-burnout.plist
 
 Runs every 5 minutes at :00, :05, :10...
 
-## Smoke test
-
-```bash
-# verify env
-source .env && echo "API key length: ${#QUOTE0_API_KEY}"
-
-# test CodexBar
-codexbar usage --provider codex --format json --source cli | python3 -m json.tool > /dev/null \
-  && echo "CodexBar OK" || echo "CodexBar FAIL"
-
-# self-check
-python display.py --check
-
-# debug snapshot
-python display.py --debug-json
-
-# preview only (no push)
-python display.py --preview
-
-# full push
-python display.py
-```
-
 ## Troubleshooting
 
-**`SyntaxError` on run**
+**Push returns 404 "未找到图像 API 内容"**
 
-Check file line endings are LF (not CRLF):
-
-```bash
-file display.py render.py quote0_usage.py
-```
-
-**`ModuleNotFoundError: No module named 'PIL'`**
-
-```bash
-pip install -r requirements.txt
-```
-
-**Image API push returns 404 "未找到图像 API 内容"**
-
-1. Go to Dot. App → Content Studio
+1. Dot. App → Content Studio
 2. Remove all IMAGE_API cards from the device task
 3. Re-add a single IMAGE_API card
-4. Verify with `python display.py --list-tasks`
+4. Verify: `python display.py --list-tasks`
+
+**Codex shows "no auth"**
+
+Your `~/.codex/auth.json` is missing or expired. Run `codex` to re-authenticate,
+or set `CODEX_ACCESS_TOKEN` in `.env`.
 
 **Display doesn't update on schedule**
 
-- Check launchd status: `launchctl list | grep quote0`
-- If `runs = 0`, kickstart: `launchctl kickstart gui/$(id -u)/com.ajax.quote0-burnout`
-- If cron is blocked by macOS TCC, grant Terminal / cron Full Disk Access in System Settings → Privacy & Security
+- `launchctl list | grep quote0`
+- If stuck, kickstart: `launchctl kickstart gui/$(id -u)/com.ajax.quote0-burnout`
 
-**Codex shows "timeout" or "no codexbar"**
-
-```bash
-# Test CodexBar directly
-codexbar usage --provider codex --format json --source cli
-# If it hangs, try with --source cli (skips web dashboard)
-```
-
-**Run `--check` to diagnose issues**
+**Run `--check` to diagnose**
 
 ```bash
 python display.py --check
 ```
-Shows: env vars, CodexBar status, DeepSeek balance, image rendering, and Quote/0 connectivity — all without pushing.
 
-**Debug data structure**
-
-```bash
-python display.py --debug-json
-```
-Prints the full snapshot dict — useful for checking CodexBar parsing and status levels.
+Shows: env vars, Codex auth + API status, DeepSeek balance, rendering, and Quote/0 connectivity.
