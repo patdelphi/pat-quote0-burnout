@@ -42,8 +42,8 @@ from display import build_snapshot
 
 REFRESH_INTERVAL = int(os.environ.get("REFRESH_INTERVAL", "300"))  # 秒，默认 5 分钟
 WINDOW_OPACITY   = float(os.environ.get("WINDOW_OPACITY", "0.92"))  # 不透明度
-WINDOW_WIDTH     = 340
-WINDOW_HEIGHT    = 240
+WINDOW_WIDTH     = 520
+WINDOW_HEIGHT    = 380
 
 # 颜色方案（Catppuccin Mocha 风格）
 BG_COLOR      = "#1e1e2e"
@@ -123,26 +123,26 @@ class Quote0Window:
 
     def _setup_fonts(self):
         """加载自定义字体（回退到系统等宽字体）。"""
-        # 尝试注册自定义字体
-        self.font_label = ("Consolas", 11, "bold")
-        self.font_data   = ("Consolas", 10)
-        self.font_small  = ("Consolas", 8)
-        self.font_large  = ("Consolas", 18, "bold")
+        # 尝试注册自定义字体（尺寸放大一倍）
+        self.font_label = ("Consolas", 22, "bold")
+        self.font_data   = ("Consolas", 20)
+        self.font_small  = ("Consolas", 16)
+        self.font_large  = ("Consolas", 36, "bold")
 
         # 如果 PixelOperator 字体文件存在，尝试使用
         try:
             if PIXEL_FONT_PATH.exists():
-                self.font_label = (str(PIXEL_FONT_PATH), 12)
-                self.font_data   = (str(PIXEL_FONT_PATH), 11)
-                self.font_small  = (str(PIXEL_FONT_PATH), 9)
+                self.font_label = (str(PIXEL_FONT_PATH), 24)
+                self.font_data   = (str(PIXEL_FONT_PATH), 22)
+                self.font_small  = (str(PIXEL_FONT_PATH), 18)
             if VCR_FONT_PATH.exists():
-                self.font_large = (str(VCR_FONT_PATH), 20)
+                self.font_large = (str(VCR_FONT_PATH), 40)
         except Exception:
             pass  # 回退到系统字体
 
     def _build_ui(self):
         """构建窗口界面。"""
-        pad = 12
+        pad = 18
 
         # 标题栏：时间 + 状态灯
         self.header = tk.Frame(self.root, bg=BG_COLOR)
@@ -175,7 +175,7 @@ class Quote0Window:
                                       bg=BG_COLOR, fg=FG_COLOR, width=3, anchor="w")
         self.lbl_r1_label.pack(side="left")
 
-        self.can_r1 = tk.Canvas(self.row1_frame, height=14, bg=BAR_BG,
+        self.can_r1 = tk.Canvas(self.row1_frame, height=22, bg=BAR_BG,
                                  highlightthickness=0, bd=0)
         self.can_r1.pack(side="left", fill="x", expand=True, padx=(6, 6))
 
@@ -195,7 +195,7 @@ class Quote0Window:
                                       bg=BG_COLOR, fg=FG_COLOR, width=3, anchor="w")
         self.lbl_r2_label.pack(side="left")
 
-        self.can_r2 = tk.Canvas(self.row2_frame, height=14, bg=BAR_BG,
+        self.can_r2 = tk.Canvas(self.row2_frame, height=22, bg=BAR_BG,
                                  highlightthickness=0, bd=0)
         self.can_r2.pack(side="left", fill="x", expand=True, padx=(6, 6))
 
@@ -332,8 +332,8 @@ class Quote0Window:
     def _draw_bar(self, canvas: tk.Canvas, percent: int, status: str):
         """在 Canvas 上绘制进度条。"""
         canvas.delete("all")
-        w = canvas.winfo_width() or 100
-        h = canvas.winfo_height() or 14
+        w = canvas.winfo_width() or 160
+        h = canvas.winfo_height() or 22
 
         fill_w = int((w - 2) * max(0, min(100, percent)) / 100)
         color = bar_color(status)
