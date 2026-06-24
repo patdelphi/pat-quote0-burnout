@@ -134,12 +134,12 @@ class Quote0Window:
         self._schedule_refresh()
 
     def _setup_fonts(self):
-        """加载自定义字体（统一大小）。"""
+        """加载自定义字体（统一大小，全部用 Arial）。"""
         s = self.FONT_SIZE
-        self.font_label = ("Consolas", s, "bold")
-        self.font_data   = ("Consolas", s)
-        self.font_small  = ("Consolas", s)
-        self.font_large  = ("Consolas", s + 4, "bold")  # 余额稍大但差距不大
+        self.font_label = ("Arial", s, "bold")
+        self.font_data   = ("Arial", s)
+        self.font_small  = ("Arial", s)
+        self.font_large  = ("Arial", s + 4, "bold")  # 余额稍大但差距不大
 
         # 如果 PixelOperator 字体文件存在，尝试使用
         try:
@@ -360,14 +360,18 @@ class Quote0Window:
         if fill_w > 0:
             canvas.create_rectangle(1, 1, 1 + fill_w, h - 1, fill=color, outline="")
 
-        # 文字：百分比（左对齐，固定深色确保在浅色填充条上可见）
+        # 文字：百分比（左对齐，白色描边 + 黑色字体）
         if pct_text:
-            canvas.create_text(4, h // 2, text=pct_text, fill="#1e1e2e",
-                               anchor="w", font=("Consolas", 8))
-        # 文字：重置时间（右对齐）
+            for dx, dy, col in [(0, 1, "white"), (0, -1, "white"), (1, 0, "white"), (-1, 0, "white"),
+                                (0, 0, "black")]:
+                canvas.create_text(4 + dx, h // 2 + dy, text=pct_text, fill=col,
+                                   anchor="w", font=("Arial", 8))
+        # 文字：重置时间（右对齐，白色描边 + 黑色字体）
         if reset_text:
-            canvas.create_text(w - 4, h // 2, text=reset_text, fill=FG_DIM,
-                               anchor="e", font=("Consolas", 8))
+            for dx, dy, col in [(0, 1, "white"), (0, -1, "white"), (1, 0, "white"), (-1, 0, "white"),
+                                (0, 0, "black")]:
+                canvas.create_text(w - 4 + dx, h // 2 + dy, text=reset_text, fill=col,
+                                   anchor="e", font=("Arial", 8))
 
     # ── 定时器 ──────────────────────────────────────────────────────────────────
 
