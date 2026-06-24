@@ -94,7 +94,9 @@ except Exception:
 class Quote0Window:
     """AI 额度数据置顶弹窗。"""
 
-    FONT_SIZE = 10  # 统一字体大小
+    FONT_FAMILY = os.environ.get("FONT_FAMILY", "Arial")
+    FONT_SIZE = int(os.environ.get("FONT_SIZE", "10"))
+    FONT_SIZE_LARGE_OFFSET = int(os.environ.get("FONT_SIZE_LARGE_OFFSET", "4"))
 
     def __init__(self):
         self.root = tk.Tk()
@@ -134,23 +136,14 @@ class Quote0Window:
         self._schedule_refresh()
 
     def _setup_fonts(self):
-        """加载自定义字体（统一大小，全部用 Arial）。"""
+        """加载自定义字体（全部从 .env 读取配置）。"""
+        family = self.FONT_FAMILY
         s = self.FONT_SIZE
-        self.font_label = ("Arial", s, "bold")
-        self.font_data   = ("Arial", s)
-        self.font_small  = ("Arial", s)
-        self.font_large  = ("Arial", s + 4, "bold")  # 余额稍大但差距不大
-
-        # 如果 PixelOperator 字体文件存在，尝试使用
-        try:
-            if PIXEL_FONT_PATH.exists():
-                self.font_label = (str(PIXEL_FONT_PATH), s + 1)
-                self.font_data   = (str(PIXEL_FONT_PATH), s)
-                self.font_small  = (str(PIXEL_FONT_PATH), s)
-            if VCR_FONT_PATH.exists():
-                self.font_large = (str(VCR_FONT_PATH), s + 4)
-        except Exception:
-            pass  # 回退到系统字体
+        large = s + self.FONT_SIZE_LARGE_OFFSET
+        self.font_label = (family, s, "bold")
+        self.font_data   = (family, s)
+        self.font_small  = (family, s)
+        self.font_large  = (family, large, "bold")
 
     def _build_ui(self):
         """构建窗口界面。"""
