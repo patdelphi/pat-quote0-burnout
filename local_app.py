@@ -42,8 +42,8 @@ from display import build_snapshot
 
 REFRESH_INTERVAL = int(os.environ.get("REFRESH_INTERVAL", "300"))  # 秒，默认 5 分钟
 WINDOW_OPACITY   = float(os.environ.get("WINDOW_OPACITY", "0.92"))  # 不透明度
-WINDOW_WIDTH     = 400
-WINDOW_HEIGHT    = 280
+WINDOW_WIDTH     = 360
+WINDOW_HEIGHT    = 240
 
 # 颜色方案（Catppuccin Mocha 风格）
 BG_COLOR      = "#1e1e2e"
@@ -127,25 +127,25 @@ class Quote0Window:
 
     def _setup_fonts(self):
         """加载自定义字体（回退到系统等宽字体）。"""
-        self.font_label = ("Consolas", 14, "bold")
-        self.font_data   = ("Consolas", 12)
-        self.font_small  = ("Consolas", 10)
-        self.font_large  = ("Consolas", 20, "bold")
+        self.font_label = ("Consolas", 11, "bold")
+        self.font_data   = ("Consolas", 10)
+        self.font_small  = ("Consolas", 9)
+        self.font_large  = ("Consolas", 16, "bold")
 
         # 如果 PixelOperator 字体文件存在，尝试使用
         try:
             if PIXEL_FONT_PATH.exists():
-                self.font_label = (str(PIXEL_FONT_PATH), 16)
-                self.font_data   = (str(PIXEL_FONT_PATH), 14)
-                self.font_small  = (str(PIXEL_FONT_PATH), 11)
+                self.font_label = (str(PIXEL_FONT_PATH), 12)
+                self.font_data   = (str(PIXEL_FONT_PATH), 11)
+                self.font_small  = (str(PIXEL_FONT_PATH), 10)
             if VCR_FONT_PATH.exists():
-                self.font_large = (str(VCR_FONT_PATH), 22)
+                self.font_large = (str(VCR_FONT_PATH), 18)
         except Exception:
             pass  # 回退到系统字体
 
     def _build_ui(self):
         """构建窗口界面。"""
-        pad = 18
+        pad = 14
 
         # 标题栏：时间 + 状态灯
         self.header = tk.Frame(self.root, bg=BG_COLOR)
@@ -160,7 +160,7 @@ class Quote0Window:
         self.lbl_status.pack(side="right")
 
         # 分隔线
-        tk.Frame(self.root, height=1, bg=DIVIDER).pack(fill="x", padx=pad, pady=4)
+        tk.Frame(self.root, height=1, bg=DIVIDER).pack(fill="x", padx=pad, pady=3)
 
         # ── CODEX 区域 ──────────────────────────────────────────────────────
         self.codex_frame = tk.Frame(self.root, bg=BG_COLOR)
@@ -178,17 +178,17 @@ class Quote0Window:
                                       bg=BG_COLOR, fg=FG_COLOR, anchor="w")
         self.lbl_r1_label.pack(side="left")
 
-        self.can_r1 = tk.Canvas(self.row1_frame, height=22, bg=BAR_BG,
+        self.can_r1 = tk.Canvas(self.row1_frame, height=16, bg=BAR_BG,
                                  highlightthickness=0, bd=0)
-        self.can_r1.pack(side="left", fill="x", expand=True, padx=(6, 6))
+        self.can_r1.pack(side="left", fill="x", expand=True, padx=(4, 4))
 
         self.lbl_r1_pct = tk.Label(self.row1_frame, text="--%", font=self.font_data,
                                     bg=BG_COLOR, fg=FG_COLOR, anchor="e")
-        self.lbl_r1_pct.pack(side="left", padx=(8, 0))
+        self.lbl_r1_pct.pack(side="left", padx=(6, 0))
 
         self.lbl_r1_reset = tk.Label(self.row1_frame, text="--", font=self.font_data,
                                       bg=BG_COLOR, fg=FG_DIM, anchor="e")
-        self.lbl_r1_reset.pack(side="left", padx=(8, 0))
+        self.lbl_r1_reset.pack(side="left", padx=(6, 0))
 
         # 长窗口行
         self.row2_frame = tk.Frame(self.codex_frame, bg=BG_COLOR)
@@ -198,24 +198,24 @@ class Quote0Window:
                                       bg=BG_COLOR, fg=FG_COLOR, anchor="w")
         self.lbl_r2_label.pack(side="left")
 
-        self.can_r2 = tk.Canvas(self.row2_frame, height=22, bg=BAR_BG,
+        self.can_r2 = tk.Canvas(self.row2_frame, height=16, bg=BAR_BG,
                                  highlightthickness=0, bd=0)
-        self.can_r2.pack(side="left", fill="x", expand=True, padx=(6, 6))
+        self.can_r2.pack(side="left", fill="x", expand=True, padx=(4, 4))
 
         self.lbl_r2_pct = tk.Label(self.row2_frame, text="--%", font=self.font_data,
                                     bg=BG_COLOR, fg=FG_COLOR, anchor="e")
-        self.lbl_r2_pct.pack(side="left", padx=(8, 0))
+        self.lbl_r2_pct.pack(side="left", padx=(6, 0))
 
         self.lbl_r2_reset = tk.Label(self.row2_frame, text="--", font=self.font_data,
                                       bg=BG_COLOR, fg=FG_DIM, anchor="e")
-        self.lbl_r2_reset.pack(side="left", padx=(8, 0))
+        self.lbl_r2_reset.pack(side="left", padx=(6, 0))
 
         # 分隔线
-        tk.Frame(self.root, height=1, bg=DIVIDER).pack(fill="x", padx=pad, pady=6)
+        tk.Frame(self.root, height=1, bg=DIVIDER).pack(fill="x", padx=pad, pady=3)
 
         # ── DEEPSEEK 区域 ────────────────────────────────────────────────────
         self.ds_frame = tk.Frame(self.root, bg=BG_COLOR)
-        self.ds_frame.pack(fill="x", padx=pad, pady=(2, pad))
+        self.ds_frame.pack(fill="x", padx=pad, pady=(2, 10))
 
         self.lbl_ds_title = tk.Label(self.ds_frame, text="◆ DEEPSEEK", font=self.font_label,
                                       bg=BG_COLOR, fg=FG_COLOR)
