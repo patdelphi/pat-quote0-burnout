@@ -48,8 +48,8 @@ from display import build_snapshot
 
 REFRESH_INTERVAL = int(os.environ.get("REFRESH_INTERVAL", "300"))  # 秒，默认 5 分钟
 WINDOW_OPACITY   = float(os.environ.get("WINDOW_OPACITY", "0.92"))  # 不透明度
-WINDOW_WIDTH     = 360
-WINDOW_HEIGHT    = 260
+WINDOW_WIDTH     = 400
+WINDOW_HEIGHT    = 280
 
 # 颜色方案（Catppuccin Mocha 风格）
 BG_COLOR      = "#1e1e2e"
@@ -94,7 +94,7 @@ except Exception:
 class Quote0Window:
     """AI 额度数据置顶弹窗。"""
 
-    FONT_SIZE = 11  # 统一字体大小
+    FONT_SIZE = 10  # 统一字体大小
 
     def __init__(self):
         self.root = tk.Tk()
