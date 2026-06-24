@@ -48,8 +48,8 @@ from display import build_snapshot
 
 REFRESH_INTERVAL = int(os.environ.get("REFRESH_INTERVAL", "300"))  # 秒，默认 5 分钟
 WINDOW_OPACITY   = float(os.environ.get("WINDOW_OPACITY", "0.92"))  # 不透明度
-WINDOW_WIDTH     = 320
-WINDOW_HEIGHT    = 340
+WINDOW_WIDTH     = 360
+WINDOW_HEIGHT    = 260
 
 # 颜色方案（Catppuccin Mocha 风格）
 BG_COLOR      = "#1e1e2e"
@@ -94,6 +94,8 @@ except Exception:
 class Quote0Window:
     """AI 额度数据置顶弹窗。"""
 
+    FONT_SIZE = 11  # 统一字体大小
+
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("quote0-burnout")
@@ -119,7 +121,7 @@ class Quote0Window:
         self._menu.add_command(label="退出", command=self.quit)
         self.root.bind("<Button-3>", self._show_menu)
 
-        # 字体
+        # 字体（统一大小）
         self._setup_fonts()
 
         # 构建 UI
@@ -132,20 +134,21 @@ class Quote0Window:
         self._schedule_refresh()
 
     def _setup_fonts(self):
-        """加载自定义字体（回退到系统等宽字体）。"""
-        self.font_label = ("Consolas", 11, "bold")
-        self.font_data   = ("Consolas", 10)
-        self.font_small  = ("Consolas", 9)
-        self.font_large  = ("Consolas", 16, "bold")
+        """加载自定义字体（统一大小）。"""
+        s = self.FONT_SIZE
+        self.font_label = ("Consolas", s, "bold")
+        self.font_data   = ("Consolas", s)
+        self.font_small  = ("Consolas", s)
+        self.font_large  = ("Consolas", s + 4, "bold")  # 余额稍大但差距不大
 
         # 如果 PixelOperator 字体文件存在，尝试使用
         try:
             if PIXEL_FONT_PATH.exists():
-                self.font_label = (str(PIXEL_FONT_PATH), 12)
-                self.font_data   = (str(PIXEL_FONT_PATH), 11)
-                self.font_small  = (str(PIXEL_FONT_PATH), 10)
+                self.font_label = (str(PIXEL_FONT_PATH), s + 1)
+                self.font_data   = (str(PIXEL_FONT_PATH), s)
+                self.font_small  = (str(PIXEL_FONT_PATH), s)
             if VCR_FONT_PATH.exists():
-                self.font_large = (str(VCR_FONT_PATH), 18)
+                self.font_large = (str(VCR_FONT_PATH), s + 4)
         except Exception:
             pass  # 回退到系统字体
 
@@ -155,7 +158,7 @@ class Quote0Window:
 
         # 标题栏：时间 + 状态灯
         self.header = tk.Frame(self.root, bg=BG_COLOR)
-        self.header.pack(fill="x", padx=pad, pady=(pad, 4))
+        self.header.pack(fill="x", padx=pad, pady=(pad, 2))
 
         self.lbl_time = tk.Label(self.header, text="--:--", font=self.font_small,
                                   bg=BG_COLOR, fg=FG_DIM)
@@ -166,17 +169,17 @@ class Quote0Window:
         self.lbl_status.pack(side="right")
 
         # 分隔线
-        tk.Frame(self.root, height=1, bg=DIVIDER).pack(fill="x", padx=pad, pady=3)
+        tk.Frame(self.root, height=1, bg=DIVIDER).pack(fill="x", padx=pad, pady=2)
 
         # ── CODEX 区域 ──────────────────────────────────────────────────────
         self.codex_frame = tk.Frame(self.root, bg=BG_COLOR)
-        self.codex_frame.pack(fill="x", padx=pad, pady=(2, 2))
+        self.codex_frame.pack(fill="x", padx=pad, pady=(2, 0))
 
         self.lbl_codex_title = tk.Label(self.codex_frame, text="◆ CODEX", font=self.font_label,
                                          bg=BG_COLOR, fg=FG_COLOR)
         self.lbl_codex_title.pack(anchor="w")
 
-        # 短窗口行：标签 + 进度条（百分比和重置时间放下一行）
+        # 短窗口行：标签 + 进度条 + % + 重置时间（全部一行）
         self.row1_frame = tk.Frame(self.codex_frame, bg=BG_COLOR)
         self.row1_frame.pack(fill="x", pady=(2, 0))
 
@@ -184,23 +187,19 @@ class Quote0Window:
                                       bg=BG_COLOR, fg=FG_COLOR, anchor="w")
         self.lbl_r1_label.pack(side="left")
 
-        self.can_r1 = tk.Canvas(self.row1_frame, height=14, bg=BAR_BG,
+        self.can_r1 = tk.Canvas(self.row1_frame, height=12, bg=BAR_BG,
                                  highlightthickness=0, bd=0)
-        self.can_r1.pack(side="left", fill="x", expand=True, padx=(4, 0))
+        self.can_r1.pack(side="left", fill="x", expand=True, padx=(4, 4))
 
-        # 短窗口信息行：百分比 + 重置时间
-        self.row1_info = tk.Frame(self.codex_frame, bg=BG_COLOR)
-        self.row1_info.pack(fill="x", pady=(1, 0))
-
-        self.lbl_r1_pct = tk.Label(self.row1_info, text="--%", font=self.font_small,
-                                    bg=BG_COLOR, fg=FG_COLOR, anchor="w")
+        self.lbl_r1_pct = tk.Label(self.row1_frame, text="--%", font=self.font_data,
+                                    bg=BG_COLOR, fg=FG_COLOR, anchor="e")
         self.lbl_r1_pct.pack(side="left")
 
-        self.lbl_r1_reset = tk.Label(self.row1_info, text="--", font=self.font_small,
+        self.lbl_r1_reset = tk.Label(self.row1_frame, text="--", font=self.font_data,
                                       bg=BG_COLOR, fg=FG_DIM, anchor="e")
-        self.lbl_r1_reset.pack(side="right")
+        self.lbl_r1_reset.pack(side="left", padx=(6, 0))
 
-        # 长窗口行
+        # 长窗口行：标签 + 进度条 + % + 重置时间（全部一行）
         self.row2_frame = tk.Frame(self.codex_frame, bg=BG_COLOR)
         self.row2_frame.pack(fill="x", pady=(4, 0))
 
@@ -208,41 +207,38 @@ class Quote0Window:
                                       bg=BG_COLOR, fg=FG_COLOR, anchor="w")
         self.lbl_r2_label.pack(side="left")
 
-        self.can_r2 = tk.Canvas(self.row2_frame, height=14, bg=BAR_BG,
+        self.can_r2 = tk.Canvas(self.row2_frame, height=12, bg=BAR_BG,
                                  highlightthickness=0, bd=0)
-        self.can_r2.pack(side="left", fill="x", expand=True, padx=(4, 0))
+        self.can_r2.pack(side="left", fill="x", expand=True, padx=(4, 4))
 
-        # 长窗口信息行：百分比 + 重置时间
-        self.row2_info = tk.Frame(self.codex_frame, bg=BG_COLOR)
-        self.row2_info.pack(fill="x", pady=(1, 0))
-
-        self.lbl_r2_pct = tk.Label(self.row2_info, text="--%", font=self.font_small,
-                                    bg=BG_COLOR, fg=FG_COLOR, anchor="w")
+        self.lbl_r2_pct = tk.Label(self.row2_frame, text="--%", font=self.font_data,
+                                    bg=BG_COLOR, fg=FG_COLOR, anchor="e")
         self.lbl_r2_pct.pack(side="left")
 
-        self.lbl_r2_reset = tk.Label(self.row2_info, text="--", font=self.font_small,
+        self.lbl_r2_reset = tk.Label(self.row2_frame, text="--", font=self.font_data,
                                       bg=BG_COLOR, fg=FG_DIM, anchor="e")
-        self.lbl_r2_reset.pack(side="right")
+        self.lbl_r2_reset.pack(side="left", padx=(6, 0))
 
         # 分隔线
         tk.Frame(self.root, height=1, bg=DIVIDER).pack(fill="x", padx=pad, pady=3)
 
         # ── DEEPSEEK 区域 ────────────────────────────────────────────────────
         self.ds_frame = tk.Frame(self.root, bg=BG_COLOR)
-        self.ds_frame.pack(fill="x", padx=pad, pady=(2, 10))
+        self.ds_frame.pack(fill="x", padx=pad, pady=(2, 8))
 
         self.lbl_ds_title = tk.Label(self.ds_frame, text="◆ DEEPSEEK", font=self.font_label,
                                       bg=BG_COLOR, fg=FG_COLOR)
         self.lbl_ds_title.pack(anchor="w")
 
         self.ds_row = tk.Frame(self.ds_frame, bg=BG_COLOR)
-        self.ds_row.pack(fill="x", pady=(4, 0))
+        self.ds_row.pack(fill="x", pady=(2, 0))
 
         self.lbl_ds_balance = tk.Label(self.ds_row, text="$--.--", font=self.font_large,
                                         bg=BG_COLOR, fg=FG_COLOR)
         self.lbl_ds_balance.pack(side="left")
 
-        self.lbl_ds_status = tk.Label(self.ds_row, text="--", font=self.font_data,
+        # 状态标签（仅 warn/hot 时显示，ok 时隐藏）
+        self.lbl_ds_status = tk.Label(self.ds_row, text="", font=self.font_data,
                                        bg=BG_COLOR, fg=FG_DIM)
         self.lbl_ds_status.pack(side="right")
 
@@ -322,7 +318,7 @@ class Quote0Window:
         status_text = f"{cx_dot} C  {ds_dot} D"
         self.lbl_status.config(text=status_text, fg=cx_color if cx_st != "ok" else ds_color)
 
-        # Codex 行 1
+        # Codex 行 1（一行：标签 + 进度条 + % + 重置时间）
         if cx.get("ok"):
             s_pct = cx.get("short_used_percent")
             s_reset = cx.get("short_reset", "?")
@@ -334,10 +330,10 @@ class Quote0Window:
             self.lbl_r1_reset.config(text=s_reset)
             self._draw_bar(self.can_r1, remaining, s_status)
 
-            # Codex 行 2
+            # Codex 行 2（一行：标签 + 进度条 + % + 重置时间）
             l_pct = cx.get("long_used_percent")
             l_reset = cx.get("long_reset", "?")
-            l_status = cx.get("status", "ok")  # 复用短窗口状态
+            l_status = cx.get("status", "ok")
             l_remaining = 100 - l_pct if l_pct is not None else 0
 
             self.lbl_r2_label.config(text=cx.get("long_label", "Wk"))
@@ -355,14 +351,18 @@ class Quote0Window:
             self.lbl_r2_reset.config(text="")
             self._draw_bar(self.can_r2, 0, "error")
 
-        # DeepSeek
+        # DeepSeek（ok 时不显示状态，仅 warn/hot/error 时显示）
         if ds.get("ok"):
             bal = ds.get("balance")
             sym = ds.get("symbol", "$")
             ds_status = ds.get("status", "ok")
             bal_text = f"{sym}{bal:.2f}" if bal is not None else "?"
             self.lbl_ds_balance.config(text=bal_text, fg=status_color(ds_status))
-            self.lbl_ds_status.config(text=ds_status.upper(), fg=status_color(ds_status))
+            # ok 状态隐藏，其他状态显示
+            if ds_status == "ok":
+                self.lbl_ds_status.config(text="", fg=FG_DIM)
+            else:
+                self.lbl_ds_status.config(text=ds_status.upper(), fg=status_color(ds_status))
         else:
             err = ds.get("raw_status", "error")
             self.lbl_ds_balance.config(text=err, fg=FG_HOT)
@@ -371,8 +371,8 @@ class Quote0Window:
     def _draw_bar(self, canvas: tk.Canvas, percent: int, status: str):
         """在 Canvas 上绘制进度条。"""
         canvas.delete("all")
-        w = canvas.winfo_width() or 160
-        h = canvas.winfo_height() or 22
+        w = canvas.winfo_width() or 120
+        h = canvas.winfo_height() or 12
 
         fill_w = int((w - 2) * max(0, min(100, percent)) / 100)
         color = bar_color(status)
