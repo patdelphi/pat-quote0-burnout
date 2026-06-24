@@ -26,6 +26,9 @@ if env_path.exists():
             line = line.strip()
             if not line or line.startswith("#") or "=" not in line:
                 continue
+            # 去掉行内注释
+            if " #" in line:
+                line = line.split(" #", 1)[0]
             # 支持 shell 格式：export KEY="value"
             if line.startswith("export "):
                 line = line[7:]
