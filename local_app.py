@@ -14,15 +14,11 @@ quote0-burnout 本地弹窗 — Windows 桌面置顶显示 AI 额度数据。
 
 from __future__ import annotations
 
-import ctypes
 import os
 import sys
-import threading
-import tkinter as tk
 from pathlib import Path
-from tkinter import font as tkfont
 
-# 加载 .env 配置（如果存在）
+# 必须先加载 .env，再导入 display（display 在模块级别读取环境变量）
 env_path = Path(__file__).parent / ".env"
 if env_path.exists():
     with open(env_path, encoding="utf-8") as f:
@@ -35,7 +31,11 @@ if env_path.exists():
             val = val.strip().strip('"').strip("'")
             os.environ.setdefault(key, val)
 
-# 导入数据模块
+import ctypes
+import threading
+import tkinter as tk
+from tkinter import font as tkfont
+
 from display import build_snapshot
 
 # ── 配置 ──────────────────────────────────────────────────────────────────────
