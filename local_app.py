@@ -42,8 +42,8 @@ from display import build_snapshot
 
 REFRESH_INTERVAL = int(os.environ.get("REFRESH_INTERVAL", "300"))  # 秒，默认 5 分钟
 WINDOW_OPACITY   = float(os.environ.get("WINDOW_OPACITY", "0.92"))  # 不透明度
-WINDOW_WIDTH     = 360
-WINDOW_HEIGHT    = 240
+WINDOW_WIDTH     = 320
+WINDOW_HEIGHT    = 280
 
 # 颜色方案（Catppuccin Mocha 风格）
 BG_COLOR      = "#1e1e2e"
@@ -164,31 +164,35 @@ class Quote0Window:
 
         # ── CODEX 区域 ──────────────────────────────────────────────────────
         self.codex_frame = tk.Frame(self.root, bg=BG_COLOR)
-        self.codex_frame.pack(fill="x", padx=pad, pady=(4, 2))
+        self.codex_frame.pack(fill="x", padx=pad, pady=(2, 2))
 
         self.lbl_codex_title = tk.Label(self.codex_frame, text="◆ CODEX", font=self.font_label,
                                          bg=BG_COLOR, fg=FG_COLOR)
         self.lbl_codex_title.pack(anchor="w")
 
-        # 短窗口行
+        # 短窗口行：标签 + 进度条（百分比和重置时间放下一行）
         self.row1_frame = tk.Frame(self.codex_frame, bg=BG_COLOR)
-        self.row1_frame.pack(fill="x", pady=(4, 0))
+        self.row1_frame.pack(fill="x", pady=(2, 0))
 
         self.lbl_r1_label = tk.Label(self.row1_frame, text="5h", font=self.font_data,
                                       bg=BG_COLOR, fg=FG_COLOR, anchor="w")
         self.lbl_r1_label.pack(side="left")
 
-        self.can_r1 = tk.Canvas(self.row1_frame, height=16, bg=BAR_BG,
+        self.can_r1 = tk.Canvas(self.row1_frame, height=14, bg=BAR_BG,
                                  highlightthickness=0, bd=0)
-        self.can_r1.pack(side="left", fill="x", expand=True, padx=(4, 4))
+        self.can_r1.pack(side="left", fill="x", expand=True, padx=(4, 0))
 
-        self.lbl_r1_pct = tk.Label(self.row1_frame, text="--%", font=self.font_data,
-                                    bg=BG_COLOR, fg=FG_COLOR, anchor="e")
-        self.lbl_r1_pct.pack(side="left", padx=(6, 0))
+        # 短窗口信息行：百分比 + 重置时间
+        self.row1_info = tk.Frame(self.codex_frame, bg=BG_COLOR)
+        self.row1_info.pack(fill="x", pady=(1, 0))
 
-        self.lbl_r1_reset = tk.Label(self.row1_frame, text="--", font=self.font_data,
+        self.lbl_r1_pct = tk.Label(self.row1_info, text="--%", font=self.font_small,
+                                    bg=BG_COLOR, fg=FG_COLOR, anchor="w")
+        self.lbl_r1_pct.pack(side="left")
+
+        self.lbl_r1_reset = tk.Label(self.row1_info, text="--", font=self.font_small,
                                       bg=BG_COLOR, fg=FG_DIM, anchor="e")
-        self.lbl_r1_reset.pack(side="left", padx=(6, 0))
+        self.lbl_r1_reset.pack(side="right")
 
         # 长窗口行
         self.row2_frame = tk.Frame(self.codex_frame, bg=BG_COLOR)
@@ -198,17 +202,21 @@ class Quote0Window:
                                       bg=BG_COLOR, fg=FG_COLOR, anchor="w")
         self.lbl_r2_label.pack(side="left")
 
-        self.can_r2 = tk.Canvas(self.row2_frame, height=16, bg=BAR_BG,
+        self.can_r2 = tk.Canvas(self.row2_frame, height=14, bg=BAR_BG,
                                  highlightthickness=0, bd=0)
-        self.can_r2.pack(side="left", fill="x", expand=True, padx=(4, 4))
+        self.can_r2.pack(side="left", fill="x", expand=True, padx=(4, 0))
 
-        self.lbl_r2_pct = tk.Label(self.row2_frame, text="--%", font=self.font_data,
-                                    bg=BG_COLOR, fg=FG_COLOR, anchor="e")
-        self.lbl_r2_pct.pack(side="left", padx=(6, 0))
+        # 长窗口信息行：百分比 + 重置时间
+        self.row2_info = tk.Frame(self.codex_frame, bg=BG_COLOR)
+        self.row2_info.pack(fill="x", pady=(1, 0))
 
-        self.lbl_r2_reset = tk.Label(self.row2_frame, text="--", font=self.font_data,
+        self.lbl_r2_pct = tk.Label(self.row2_info, text="--%", font=self.font_small,
+                                    bg=BG_COLOR, fg=FG_COLOR, anchor="w")
+        self.lbl_r2_pct.pack(side="left")
+
+        self.lbl_r2_reset = tk.Label(self.row2_info, text="--", font=self.font_small,
                                       bg=BG_COLOR, fg=FG_DIM, anchor="e")
-        self.lbl_r2_reset.pack(side="left", padx=(6, 0))
+        self.lbl_r2_reset.pack(side="right")
 
         # 分隔线
         tk.Frame(self.root, height=1, bg=DIVIDER).pack(fill="x", padx=pad, pady=3)
