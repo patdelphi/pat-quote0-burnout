@@ -180,9 +180,9 @@ class Quote0Window:
                                       bg=BG_COLOR, fg=FG_COLOR, anchor="w")
         self.lbl_r1_label.pack(side="left")
 
-        self.can_r1 = tk.Canvas(self.row1_frame, height=14, width=180, bg=BAR_BG,
+        self.can_r1 = tk.Canvas(self.row1_frame, height=14, bg=BAR_BG,
                                  highlightthickness=0, bd=0)
-        self.can_r1.pack(side="left", padx=(4, 4))
+        self.can_r1.pack(side="left", fill="x", expand=True, padx=(4, 4))
 
         self.lbl_r1_info = tk.Label(self.row1_frame, text="--% / --", font=self.font_data,
                                      bg=BG_COLOR, fg=FG_COLOR, anchor="e")
@@ -196,9 +196,9 @@ class Quote0Window:
                                       bg=BG_COLOR, fg=FG_COLOR, anchor="w")
         self.lbl_r2_label.pack(side="left")
 
-        self.can_r2 = tk.Canvas(self.row2_frame, height=14, width=180, bg=BAR_BG,
+        self.can_r2 = tk.Canvas(self.row2_frame, height=14, bg=BAR_BG,
                                  highlightthickness=0, bd=0)
-        self.can_r2.pack(side="left", padx=(4, 4))
+        self.can_r2.pack(side="left", fill="x", expand=True, padx=(4, 4))
 
         self.lbl_r2_info = tk.Label(self.row2_frame, text="--% / --", font=self.font_data,
                                      bg=BG_COLOR, fg=FG_COLOR, anchor="e")
@@ -226,6 +226,12 @@ class Quote0Window:
         self.lbl_ds_status = tk.Label(self.ds_frame, text="", font=self.font_data,
                                        bg=BG_COLOR, fg=FG_DIM)
         self.lbl_ds_status.pack(anchor="e")
+
+        # 右下角 resize handle
+        self._resize_handle = tk.Frame(self.root, width=12, height=12, bg=DIVIDER, cursor="size_nw_se")
+        self._resize_handle.place(relx=1.0, rely=1.0, anchor="se")
+        self._resize_handle.bind("<Button-1>", self._on_resize_press)
+        self._resize_handle.bind("<B1-Motion>", self._on_resize_drag)
 
     # ── 拖动 ────────────────────────────────────────────────────────────────────
 
@@ -259,6 +265,19 @@ class Quote0Window:
         x = self.root.winfo_x() + event.x - self._drag_x
         y = self.root.winfo_y() + event.y - self._drag_y
         self.root.geometry(f"+{x}+{y}")
+
+    def _on_resize_press(self, event):
+        self._resize_x = event.x_root
+        self._resize_y = event.y_root
+        self._resize_w = self.root.winfo_width()
+        self._resize_h = self.root.winfo_height()
+
+    def _on_resize_drag(self, event):
+        dw = event.x_root - self._resize_x
+        dh = event.y_root - self._resize_y
+        new_w = max(280, self._resize_w + dw)
+        new_h = max(180, self._resize_h + dh)
+        self.root.geometry(f"{new_w}x{new_h}")
 
     def _on_double_click(self, event):
         self.refresh()
