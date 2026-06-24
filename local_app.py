@@ -43,7 +43,7 @@ from display import build_snapshot
 REFRESH_INTERVAL = int(os.environ.get("REFRESH_INTERVAL", "300"))  # 秒，默认 5 分钟
 WINDOW_OPACITY   = float(os.environ.get("WINDOW_OPACITY", "0.92"))  # 不透明度
 WINDOW_WIDTH     = 320
-WINDOW_HEIGHT    = 280
+WINDOW_HEIGHT    = 340
 
 # 颜色方案（Catppuccin Mocha 风格）
 BG_COLOR      = "#1e1e2e"
