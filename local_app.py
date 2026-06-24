@@ -187,9 +187,9 @@ class Quote0Window:
                                       bg=BG_COLOR, fg=FG_COLOR, anchor="w")
         self.lbl_r1_label.pack(side="left")
 
-        self.can_r1 = tk.Canvas(self.row1_frame, height=14, bg=BAR_BG,
+        self.can_r1 = tk.Canvas(self.row1_frame, height=14, width=180, bg=BAR_BG,
                                  highlightthickness=0, bd=0)
-        self.can_r1.pack(side="left", fill="x", expand=True, padx=(4, 4))
+        self.can_r1.pack(side="left", padx=(4, 4))
 
         self.lbl_r1_info = tk.Label(self.row1_frame, text="--% / --", font=self.font_data,
                                      bg=BG_COLOR, fg=FG_COLOR, anchor="e")
@@ -203,9 +203,9 @@ class Quote0Window:
                                       bg=BG_COLOR, fg=FG_COLOR, anchor="w")
         self.lbl_r2_label.pack(side="left")
 
-        self.can_r2 = tk.Canvas(self.row2_frame, height=14, bg=BAR_BG,
+        self.can_r2 = tk.Canvas(self.row2_frame, height=14, width=180, bg=BAR_BG,
                                  highlightthickness=0, bd=0)
-        self.can_r2.pack(side="left", fill="x", expand=True, padx=(4, 4))
+        self.can_r2.pack(side="left", padx=(4, 4))
 
         self.lbl_r2_info = tk.Label(self.row2_frame, text="--% / --", font=self.font_data,
                                      bg=BG_COLOR, fg=FG_COLOR, anchor="e")
