@@ -211,21 +211,21 @@ class Quote0Window:
         self.ds_frame = tk.Frame(self.root, bg=BG_COLOR)
         self.ds_frame.pack(fill="x", padx=pad, pady=(2, 8))
 
-        self.lbl_ds_title = tk.Label(self.ds_frame, text="◆ DEEPSEEK", font=self.font_label,
-                                      bg=BG_COLOR, fg=FG_COLOR)
-        self.lbl_ds_title.pack(anchor="w")
-
         self.ds_row = tk.Frame(self.ds_frame, bg=BG_COLOR)
-        self.ds_row.pack(fill="x", pady=(2, 0))
+        self.ds_row.pack(fill="x")
 
-        self.lbl_ds_balance = tk.Label(self.ds_row, text="$--.--", font=self.font_large,
+        self.lbl_ds_title = tk.Label(self.ds_row, text="◆ DEEPSEEK", font=self.font_label,
+                                      bg=BG_COLOR, fg=FG_COLOR)
+        self.lbl_ds_title.pack(side="left")
+
+        self.lbl_ds_balance = tk.Label(self.ds_row, text="$--.--", font=self.font_label,
                                         bg=BG_COLOR, fg=FG_COLOR)
-        self.lbl_ds_balance.pack(side="left")
+        self.lbl_ds_balance.pack(side="right")
 
-        # 状态标签（仅 warn/hot 时显示，ok 时隐藏）
-        self.lbl_ds_status = tk.Label(self.ds_row, text="", font=self.font_data,
+        # 状态标签（仅 warn/hot 时显示，ok 时隐藏，放在余额下方）
+        self.lbl_ds_status = tk.Label(self.ds_frame, text="", font=self.font_data,
                                        bg=BG_COLOR, fg=FG_DIM)
-        self.lbl_ds_status.pack(side="right")
+        self.lbl_ds_status.pack(anchor="e")
 
     # ── 拖动 ────────────────────────────────────────────────────────────────────
 
