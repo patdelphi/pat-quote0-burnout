@@ -360,13 +360,10 @@ class Quote0Window:
         if fill_w > 0:
             canvas.create_rectangle(1, 1, 1 + fill_w, h - 1, fill=color, outline="")
 
-        # 文字：百分比（左对齐，带深色描边确保任何背景下可见）
+        # 文字：百分比（左对齐，固定浅色）
         if pct_text:
-            # 描边效果：先画深色文字偏移1px，再画浅色文字
-            for dx, dy, col in [(-1, 0, "#1e1e2e"), (1, 0, "#1e1e2e"), (0, -1, "#1e1e2e"),
-                                (0, 1, "#1e1e2e"), (0, 0, FG_COLOR)]:
-                canvas.create_text(4 + dx, h // 2 + dy, text=pct_text, fill=col,
-                                   anchor="w", font=("Consolas", 8))
+            canvas.create_text(4, h // 2, text=pct_text, fill=FG_COLOR,
+                               anchor="w", font=("Consolas", 8))
         # 文字：重置时间（右对齐）
         if reset_text:
             canvas.create_text(w - 4, h // 2, text=reset_text, fill=FG_DIM,
