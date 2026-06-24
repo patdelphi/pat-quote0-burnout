@@ -48,8 +48,8 @@ from display import build_snapshot
 
 REFRESH_INTERVAL = int(os.environ.get("REFRESH_INTERVAL", "300"))  # 秒，默认 5 分钟
 WINDOW_OPACITY   = float(os.environ.get("WINDOW_OPACITY", "0.92"))  # 不透明度
-WINDOW_WIDTH     = 400
-WINDOW_HEIGHT    = 280
+WINDOW_WIDTH     = 420
+WINDOW_HEIGHT    = 260
 
 # 颜色方案（Catppuccin Mocha 风格）
 BG_COLOR      = "#1e1e2e"
@@ -179,7 +179,7 @@ class Quote0Window:
                                          bg=BG_COLOR, fg=FG_COLOR)
         self.lbl_codex_title.pack(anchor="w")
 
-        # 短窗口行：标签 + 进度条（% 和重置时间画在进度条内部）
+        # 短窗口行：标签 + 进度条 + 数据（一行）
         self.row1_frame = tk.Frame(self.codex_frame, bg=BG_COLOR)
         self.row1_frame.pack(fill="x", pady=(2, 0))
 
@@ -187,11 +187,15 @@ class Quote0Window:
                                       bg=BG_COLOR, fg=FG_COLOR, anchor="w")
         self.lbl_r1_label.pack(side="left")
 
-        self.can_r1 = tk.Canvas(self.row1_frame, height=18, bg=BAR_BG,
+        self.can_r1 = tk.Canvas(self.row1_frame, height=14, bg=BAR_BG,
                                  highlightthickness=0, bd=0)
-        self.can_r1.pack(side="left", fill="x", expand=True, padx=(4, 0))
+        self.can_r1.pack(side="left", fill="x", expand=True, padx=(4, 4))
 
-        # 长窗口行
+        self.lbl_r1_info = tk.Label(self.row1_frame, text="--% / --", font=self.font_data,
+                                     bg=BG_COLOR, fg=FG_COLOR, anchor="e")
+        self.lbl_r1_info.pack(side="left")
+
+        # 长窗口行：标签 + 进度条 + 数据（一行）
         self.row2_frame = tk.Frame(self.codex_frame, bg=BG_COLOR)
         self.row2_frame.pack(fill="x", pady=(4, 0))
 
@@ -199,9 +203,13 @@ class Quote0Window:
                                       bg=BG_COLOR, fg=FG_COLOR, anchor="w")
         self.lbl_r2_label.pack(side="left")
 
-        self.can_r2 = tk.Canvas(self.row2_frame, height=18, bg=BAR_BG,
+        self.can_r2 = tk.Canvas(self.row2_frame, height=14, bg=BAR_BG,
                                  highlightthickness=0, bd=0)
-        self.can_r2.pack(side="left", fill="x", expand=True, padx=(4, 0))
+        self.can_r2.pack(side="left", fill="x", expand=True, padx=(4, 4))
+
+        self.lbl_r2_info = tk.Label(self.row2_frame, text="--% / --", font=self.font_data,
+                                     bg=BG_COLOR, fg=FG_COLOR, anchor="e")
+        self.lbl_r2_info.pack(side="left")
 
         # 分隔线
         tk.Frame(self.root, height=1, bg=DIVIDER).pack(fill="x", padx=pad, pady=3)
@@ -302,7 +310,7 @@ class Quote0Window:
         status_text = f"{cx_dot} C  {ds_dot} D"
         self.lbl_status.config(text=status_text, fg=cx_color if cx_st != "ok" else ds_color)
 
-        # Codex 行 1（进度条内显示 % 和重置时间）
+        # Codex 行 1（一行：标签 + 进度条 + %/重置时间）
         if cx.get("ok"):
             s_pct = cx.get("short_used_percent")
             s_reset = cx.get("short_reset", "?")
@@ -310,7 +318,8 @@ class Quote0Window:
             remaining = 100 - s_pct if s_pct is not None else 0
 
             self.lbl_r1_label.config(text=cx.get("short_label", "5h"))
-            self._draw_bar_with_text(self.can_r1, remaining, s_status, f"{remaining}%", s_reset)
+            self.lbl_r1_info.config(text=f"{remaining}% / {s_reset}", fg=status_color(s_status))
+            self._draw_bar(self.can_r1, remaining, s_status)
 
             # Codex 行 2
             l_pct = cx.get("long_used_percent")
@@ -319,13 +328,16 @@ class Quote0Window:
             l_remaining = 100 - l_pct if l_pct is not None else 0
 
             self.lbl_r2_label.config(text=cx.get("long_label", "Wk"))
-            self._draw_bar_with_text(self.can_r2, l_remaining, l_status, f"{l_remaining}%", l_reset)
+            self.lbl_r2_info.config(text=f"{l_remaining}% / {l_reset}", fg=status_color(l_status))
+            self._draw_bar(self.can_r2, l_remaining, l_status)
         else:
             err = cx.get("raw_status", "error")
             self.lbl_r1_label.config(text="Codex")
-            self._draw_bar_with_text(self.can_r1, 0, "error", err, "")
+            self.lbl_r1_info.config(text=err, fg=FG_HOT)
+            self._draw_bar(self.can_r1, 0, "error")
             self.lbl_r2_label.config(text="")
-            self._draw_bar_with_text(self.can_r2, 0, "error", "", "")
+            self.lbl_r2_info.config(text="", fg=FG_DIM)
+            self._draw_bar(self.can_r2, 0, "error")
 
         # DeepSeek（ok 时不显示状态，仅 warn/hot/error 时显示）
         if ds.get("ok"):
@@ -344,12 +356,11 @@ class Quote0Window:
             self.lbl_ds_balance.config(text=err, fg=FG_HOT)
             self.lbl_ds_status.config(text="ERR", fg=FG_HOT)
 
-    def _draw_bar_with_text(self, canvas: tk.Canvas, percent: int, status: str,
-                             pct_text: str, reset_text: str):
-        """在 Canvas 上绘制进度条，并在内部显示百分比和重置时间。"""
+    def _draw_bar(self, canvas: tk.Canvas, percent: int, status: str):
+        """在 Canvas 上绘制进度条。"""
         canvas.delete("all")
-        w = canvas.winfo_width() or 200
-        h = canvas.winfo_height() or 18
+        w = canvas.winfo_width() or 120
+        h = canvas.winfo_height() or 14
 
         fill_w = int((w - 2) * max(0, min(100, percent)) / 100)
         color = bar_color(status)
@@ -359,19 +370,6 @@ class Quote0Window:
         # 填充
         if fill_w > 0:
             canvas.create_rectangle(1, 1, 1 + fill_w, h - 1, fill=color, outline="")
-
-        # 文字：百分比（左对齐，白色描边 + 黑色字体）
-        if pct_text:
-            for dx, dy, col in [(0, 1, "white"), (0, -1, "white"), (1, 0, "white"), (-1, 0, "white"),
-                                (0, 0, "black")]:
-                canvas.create_text(4 + dx, h // 2 + dy, text=pct_text, fill=col,
-                                   anchor="w", font=("Arial", 8))
-        # 文字：重置时间（右对齐，白色描边 + 黑色字体）
-        if reset_text:
-            for dx, dy, col in [(0, 1, "white"), (0, -1, "white"), (1, 0, "white"), (-1, 0, "white"),
-                                (0, 0, "black")]:
-                canvas.create_text(w - 4 + dx, h // 2 + dy, text=reset_text, fill=col,
-                                   anchor="e", font=("Arial", 8))
 
     # ── 定时器 ──────────────────────────────────────────────────────────────────
 
