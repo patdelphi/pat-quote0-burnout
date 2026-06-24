@@ -77,6 +77,14 @@ def bar_color(status: str) -> str:
 
 # ── 主窗口类 ──────────────────────────────────────────────────────────────────
 
+# Windows DPI 感知 — 必须在 tk.Tk() 之前设置
+# 0= unaware, 1= system aware, 2= per-monitor aware
+try:
+    ctypes.windll.shcore.SetProcessDpiAwareness(1)
+except Exception:
+    pass
+
+
 class Quote0Window:
     """AI 额度数据置顶弹窗。"""
 
@@ -88,12 +96,6 @@ class Quote0Window:
         self.root.attributes("-topmost", True)    # 置顶
         self.root.attributes("-alpha", WINDOW_OPACITY)
         self.root.configure(bg=BG_COLOR)
-
-        # Windows DPI 感知
-        try:
-            ctypes.windll.shcore.SetProcessDpiAwareness(1)
-        except Exception:
-            pass
 
         # 拖动相关
         self._drag_x = 0
@@ -172,7 +174,7 @@ class Quote0Window:
         self.row1_frame.pack(fill="x", pady=(4, 0))
 
         self.lbl_r1_label = tk.Label(self.row1_frame, text="5h", font=self.font_data,
-                                      bg=BG_COLOR, fg=FG_COLOR, width=3, anchor="w")
+                                      bg=BG_COLOR, fg=FG_COLOR, anchor="w")
         self.lbl_r1_label.pack(side="left")
 
         self.can_r1 = tk.Canvas(self.row1_frame, height=22, bg=BAR_BG,
@@ -180,19 +182,19 @@ class Quote0Window:
         self.can_r1.pack(side="left", fill="x", expand=True, padx=(6, 6))
 
         self.lbl_r1_pct = tk.Label(self.row1_frame, text="--%", font=self.font_data,
-                                    bg=BG_COLOR, fg=FG_COLOR, width=5, anchor="e")
-        self.lbl_r1_pct.pack(side="left")
+                                    bg=BG_COLOR, fg=FG_COLOR, anchor="e")
+        self.lbl_r1_pct.pack(side="left", padx=(8, 0))
 
         self.lbl_r1_reset = tk.Label(self.row1_frame, text="--", font=self.font_data,
-                                      bg=BG_COLOR, fg=FG_DIM, width=8, anchor="e")
-        self.lbl_r1_reset.pack(side="left")
+                                      bg=BG_COLOR, fg=FG_DIM, anchor="e")
+        self.lbl_r1_reset.pack(side="left", padx=(8, 0))
 
         # 长窗口行
         self.row2_frame = tk.Frame(self.codex_frame, bg=BG_COLOR)
         self.row2_frame.pack(fill="x", pady=(4, 0))
 
         self.lbl_r2_label = tk.Label(self.row2_frame, text="Wk", font=self.font_data,
-                                      bg=BG_COLOR, fg=FG_COLOR, width=3, anchor="w")
+                                      bg=BG_COLOR, fg=FG_COLOR, anchor="w")
         self.lbl_r2_label.pack(side="left")
 
         self.can_r2 = tk.Canvas(self.row2_frame, height=22, bg=BAR_BG,
@@ -200,12 +202,12 @@ class Quote0Window:
         self.can_r2.pack(side="left", fill="x", expand=True, padx=(6, 6))
 
         self.lbl_r2_pct = tk.Label(self.row2_frame, text="--%", font=self.font_data,
-                                    bg=BG_COLOR, fg=FG_COLOR, width=5, anchor="e")
-        self.lbl_r2_pct.pack(side="left")
+                                    bg=BG_COLOR, fg=FG_COLOR, anchor="e")
+        self.lbl_r2_pct.pack(side="left", padx=(8, 0))
 
         self.lbl_r2_reset = tk.Label(self.row2_frame, text="--", font=self.font_data,
-                                      bg=BG_COLOR, fg=FG_DIM, width=8, anchor="e")
-        self.lbl_r2_reset.pack(side="left")
+                                      bg=BG_COLOR, fg=FG_DIM, anchor="e")
+        self.lbl_r2_reset.pack(side="left", padx=(8, 0))
 
         # 分隔线
         tk.Frame(self.root, height=1, bg=DIVIDER).pack(fill="x", padx=pad, pady=6)
