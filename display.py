@@ -233,7 +233,7 @@ def build_codex_snapshot(codex: dict) -> dict:
         "short_label": "5h",
         "short_used_percent": short_pct,
         "short_reset": _time_until(short_reset_ts) if short_reset_ts else "?",
-        "long_label": "Week",
+        "long_label": "Wk",
         "long_used_percent": long_pct,
         "long_reset": _time_until(long_reset_ts) if long_reset_ts else "?",
         "status": _pct_status(short_pct),
