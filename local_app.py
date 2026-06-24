@@ -42,8 +42,8 @@ from display import build_snapshot
 
 REFRESH_INTERVAL = int(os.environ.get("REFRESH_INTERVAL", "300"))  # 秒，默认 5 分钟
 WINDOW_OPACITY   = float(os.environ.get("WINDOW_OPACITY", "0.92"))  # 不透明度
-WINDOW_WIDTH     = 520
-WINDOW_HEIGHT    = 380
+WINDOW_WIDTH     = 400
+WINDOW_HEIGHT    = 280
 
 # 颜色方案（Catppuccin Mocha 风格）
 BG_COLOR      = "#1e1e2e"
@@ -94,8 +94,10 @@ class Quote0Window:
         self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}+100+100")
         self.root.overrideredirect(True)          # 无边框
         self.root.attributes("-topmost", True)    # 置顶
-        self.root.attributes("-alpha", WINDOW_OPACITY)
         self.root.configure(bg=BG_COLOR)
+
+        # Windows 无边框窗口设置透明度（SetLayeredWindowAttributes）
+        self._set_window_opacity(WINDOW_OPACITY)
 
         # 拖动相关
         self._drag_x = 0
@@ -125,20 +127,19 @@ class Quote0Window:
 
     def _setup_fonts(self):
         """加载自定义字体（回退到系统等宽字体）。"""
-        # 尝试注册自定义字体（尺寸放大一倍）
-        self.font_label = ("Consolas", 22, "bold")
-        self.font_data   = ("Consolas", 20)
-        self.font_small  = ("Consolas", 16)
-        self.font_large  = ("Consolas", 36, "bold")
+        self.font_label = ("Consolas", 14, "bold")
+        self.font_data   = ("Consolas", 12)
+        self.font_small  = ("Consolas", 10)
+        self.font_large  = ("Consolas", 20, "bold")
 
         # 如果 PixelOperator 字体文件存在，尝试使用
         try:
             if PIXEL_FONT_PATH.exists():
-                self.font_label = (str(PIXEL_FONT_PATH), 24)
-                self.font_data   = (str(PIXEL_FONT_PATH), 22)
-                self.font_small  = (str(PIXEL_FONT_PATH), 18)
+                self.font_label = (str(PIXEL_FONT_PATH), 16)
+                self.font_data   = (str(PIXEL_FONT_PATH), 14)
+                self.font_small  = (str(PIXEL_FONT_PATH), 11)
             if VCR_FONT_PATH.exists():
-                self.font_large = (str(VCR_FONT_PATH), 40)
+                self.font_large = (str(VCR_FONT_PATH), 22)
         except Exception:
             pass  # 回退到系统字体
 
@@ -232,6 +233,28 @@ class Quote0Window:
         self.lbl_ds_status.pack(side="right")
 
     # ── 拖动 ────────────────────────────────────────────────────────────────────
+
+    def _set_window_opacity(self, opacity: float):
+        """使用 Windows API 设置无边框窗口透明度。"""
+        try:
+            from ctypes import wintypes
+
+            hwnd = self.root.winfo_id()
+
+            # 获取当前窗口样式
+            GWL_EXSTYLE = -20
+            WS_EX_LAYERED = 0x00080000
+
+            # 设置 Layered 窗口样式
+            ex_style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+            ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, ex_style | WS_EX_LAYERED)
+
+            # 设置透明度 (0-255)
+            LWA_ALPHA = 0x00000002
+            alpha = int(255 * max(0.0, min(1.0, opacity)))
+            ctypes.windll.user32.SetLayeredWindowAttributes(hwnd, 0, alpha, LWA_ALPHA)
+        except Exception:
+            pass  # 失败则保持不透明
 
     def _on_press(self, event):
         self._drag_x = event.x
