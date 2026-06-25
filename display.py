@@ -166,7 +166,7 @@ CURRENCY_SYMBOLS = {"USD": "$", "CNY": "¥", "EUR": "€", "GBP": "£"}
 
 
 def _time_until(val) -> str:
-    """从 ISO 字符串或 Unix 时间戳计算人类可读倒计时。"""
+    """从 ISO 字符串或 Unix 时间戳格式化为本地重置时间。"""
     if val is None:
         return "?"
     try:
@@ -176,19 +176,12 @@ def _time_until(val) -> str:
             dt = datetime.fromisoformat(str(val).replace("Z", "+00:00"))
     except Exception:
         return "?"
-    delta = dt - datetime.now(timezone.utc)
-    secs = int(delta.total_seconds())
-    if secs <= 0:
-        return "now"
-    h, rem = divmod(secs, 3600)
-    m = rem // 60
-    if h >= 24:
-        d = h // 24
-        h = h % 24
-        return f"{d}d{h}h" if h > 0 else f"{d}d"
-    if h > 0:
-        return f"{h}h{m:02d}m" if m > 0 else f"{h}h"
-    return f"{m}m"
+    # 转为本地时间
+    dt_local = dt.astimezone()
+    now_local = datetime.now().astimezone()
+    if dt_local.date() == now_local.date():
+        return dt_local.strftime("%H:%M")
+    return dt_local.strftime("%m/%d %H:%M")
 
 
 def build_codex_snapshot(codex: dict) -> dict:
