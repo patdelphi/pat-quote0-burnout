@@ -20,6 +20,31 @@ from pathlib import Path
 
 # 必须先加载 .env，再导入 display（display 在模块级别读取环境变量）
 env_path = Path(__file__).parent / ".env"
+example_path = Path(__file__).parent / "config.example.env"
+
+# 如果 .env 不存在，自动创建
+if not env_path.exists():
+    if example_path.exists():
+        # 从 config.example.env 复制
+        env_path.write_text(example_path.read_text(encoding="utf-8"), encoding="utf-8")
+    else:
+        # 创建默认 .env
+        env_path.write_text(
+            '# DeepSeek API Key（必填）\n'
+            'export DEEPSEEK_API_KEY=""\n\n'
+            '# Codex 认证\n'
+            '# export CODEX_ACCESS_TOKEN=""\n'
+            '# export CODEX_ACCOUNT_ID=""\n\n'
+            '# 本地弹窗配置\n'
+            'export REFRESH_INTERVAL=300\n'
+            'export WINDOW_OPACITY=0.92\n\n'
+            '# 字体配置\n'
+            'export FONT_FAMILY="Arial"\n'
+            'export FONT_SIZE=10\n'
+            'export FONT_SIZE_LARGE_OFFSET=0\n',
+            encoding="utf-8"
+        )
+
 if env_path.exists():
     with open(env_path, encoding="utf-8") as f:
         for line in f:
@@ -135,9 +160,33 @@ class Quote0Window:
         # 定时刷新
         self._schedule_refresh()
 
+    def _resolve_font_family(self) -> str:
+        """检查用户配置的字体是否存在，不存在则按平台回退。"""
+        configured = self.FONT_FAMILY
+        available = set(tkfont.families())
+
+        if configured in available:
+            return configured
+
+        # 平台专用回退
+        platform = sys.platform
+        if platform == "win32":
+            candidates = ["Microsoft YaHei", "SimHei", "Arial", "Segoe UI"]
+        elif platform == "darwin":
+            candidates = ["PingFang SC", "Heiti SC", "Helvetica Neue", "Arial"]
+        else:  # linux / other
+            candidates = ["WenQuanYi Micro Hei", "Noto Sans CJK SC", "DejaVu Sans", "Arial"]
+
+        for c in candidates:
+            if c in available:
+                return c
+
+        # 最终兜底：Tk 会映射到系统默认无衬线字体
+        return "sans-serif"
+
     def _setup_fonts(self):
-        """加载自定义字体（全部从 .env 读取配置）。"""
-        family = self.FONT_FAMILY
+        """加载自定义字体（带跨平台兜底）。"""
+        family = self._resolve_font_family()
         s = self.FONT_SIZE
         large = s + self.FONT_SIZE_LARGE_OFFSET
         self.font_label = (family, s, "bold")
