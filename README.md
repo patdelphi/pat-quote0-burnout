@@ -7,7 +7,7 @@ AI 用量仪表盘 — OpenAI Codex + DeepSeek，支持墨水屏推送和 Window
 ## 功能
 
 - **Codex**：双窗口（5h / Wk），进度条 + 余量百分比 + 重置倒计时
-- **DeepSeek**：余额大字显示 + 状态标
+- **DeepSeek**：余额显示 + 状态标
 - Codex 数据直连 OpenAI OAuth API，**无需 CLI 依赖**
 
 ## 两种模式
@@ -22,14 +22,15 @@ AI 用量仪表盘 — OpenAI Codex + DeepSeek，支持墨水屏推送和 Window
 │  5h ████████████████░░░  27% / 4h │
 │  Wk ██████░░░░░░░░░░░░  82% / 5d │
 │──────────────────────────────────│
-│  ◆ DEEPSEEK                        │
-│  $18.42                            │
+│  ◆ DEEPSEEK              $18.42   │
 └──────────────────────────────────┘
 ```
 
 - tkinter 无边框置顶窗口，深色主题
-- 每 5 分钟自动刷新，双击手动刷新
-- 支持拖动、右键菜单（刷新/退出）
+- 首次运行自动创建 `.env` 配置文件
+- 每 5 分钟自动刷新，**双击**手动刷新
+- **左键拖动**移动窗口，**右下角拖动**调整大小
+- **右键菜单**：刷新 / 退出
 - 半透明背景
 
 ### 墨水屏推送（原版）
@@ -52,9 +53,15 @@ pip install -r requirements.txt
 
 ## 配置
 
+首次运行 `python local_app.py` 会自动创建 `.env` 文件。编辑 `.env` 填入密钥：
+
 ```bash
-cp config.example.env .env
-# 编辑 .env 填入密钥
+# 必填
+export DEEPSEEK_API_KEY="sk-xxx"
+
+# 可选 — Codex 认证（默认读取 ~/.codex/auth.json）
+# export CODEX_ACCESS_TOKEN=""
+# export CODEX_ACCOUNT_ID=""
 ```
 
 | 变量 | 必须 | 说明 |
@@ -64,23 +71,35 @@ cp config.example.env .env
 | `CODEX_ACCOUNT_ID` | | Codex 账户 ID |
 | `REFRESH_INTERVAL` | | 刷新间隔（秒），默认 300 |
 | `WINDOW_OPACITY` | | 窗口不透明度 0.0-1.0，默认 0.92 |
+| `FONT_FAMILY` | | 字体名称，默认 Arial |
+| `FONT_SIZE` | | 基础字号（px），默认 10 |
+| `FONT_SIZE_LARGE_OFFSET` | | 余额字号增量，默认 0（即全部统一大小） |
 | `QUOTE0_API_KEY` | | Quote/0 API key（墨水屏模式） |
 | `QUOTE0_DEVICE_ID` | | 设备 ID（墨水屏模式） |
+
+> 字体支持跨平台自动兜底：若配置的字体不存在，Windows 回退到 Microsoft YaHei / Arial，macOS 回退到 PingFang SC / Helvetica，Linux 回退到 WenQuanYi Micro Hei / DejaVu Sans。
 
 ## 使用
 
 ### Windows 桌面弹窗
 
 ```bash
+# 首次运行会自动创建 .env，编辑填入 DEEPSEEK_API_KEY 后再运行
 python local_app.py
 ```
+
+操作：
+- **左键拖动窗口**：按住窗口任意位置拖动
+- **双击**：手动刷新数据
+- **右键**：弹出菜单（刷新 / 退出）
+- **右下角拖动**：调整窗口大小
 
 ### 墨水屏推送
 
 ```bash
-python display.py --preview   # 本地预览
-python display.py             # 推送到设备
-python display.py --check     # 自检
+python display.py --preview    # 本地预览
+python display.py              # 推送到设备
+python display.py --check      # 自检
 python display.py --debug-json # 打印快照 JSON
 ```
 
