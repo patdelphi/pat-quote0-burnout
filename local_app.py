@@ -351,7 +351,14 @@ class Quote0Window:
                 "deepseek": {"ok": False, "raw_status": str(e)},
                 "updated_at": "ERR",
             }
-        self.root.after(0, lambda: self._update_ui(snapshot))
+        self.root.after(0, lambda: self._update_ui_safe(snapshot))
+
+    def _update_ui_safe(self, snapshot: dict):
+        """带异常捕获的 UI 更新，防止未处理异常导致程序退出。"""
+        try:
+            self._update_ui(snapshot)
+        except Exception as e:
+            self.lbl_time.config(text=f"UI错误: {e}", fg=FG_HOT)
 
     def _update_ui(self, snapshot: dict):
         """根据 snapshot 更新所有 UI 元素。"""
@@ -435,8 +442,11 @@ class Quote0Window:
     # ── 定时器 ──────────────────────────────────────────────────────────────────
 
     def _schedule_refresh(self):
-        """安排下一次刷新。"""
-        self.refresh()
+        """安排下一次刷新（带异常保护，防止定时器断链）。"""
+        try:
+            self.refresh()
+        except Exception:
+            pass  # refresh 内部已处理，此处仅保险
         self.root.after(REFRESH_INTERVAL * 1000, self._schedule_refresh)
 
     # ── 退出 ────────────────────────────────────────────────────────────────────
