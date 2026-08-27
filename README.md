@@ -8,7 +8,8 @@ AI 用量仪表盘 — OpenAI Codex + DeepSeek，支持墨水屏推送和 Window
 
 - **Codex**：双窗口（5h / Wk），进度条 + 余量百分比 + 重置倒计时
 - **DeepSeek**：余额显示 + 状态标
-- Codex 数据直连 OpenAI OAuth API，**无需 CLI 依赖**
+- Codex 数据默认通过 Codex CLI 的 `app-server` 获取，自动复用当前登录状态
+- 旧版环境自动回退到 OpenAI OAuth HTTP 接口；JSBox 小组件使用兼容 HTTP 接口
 
 ## 两种模式
 
@@ -59,7 +60,10 @@ pip install -r requirements.txt
 # 必填
 export DEEPSEEK_API_KEY="sk-xxx"
 
-# 可选 — Codex 认证（默认读取 ~/.codex/auth.json）
+# 可选 — 自定义 Codex CLI 路径（默认从 PATH 查找 codex）
+# export CODEX_COMMAND=""
+
+# 兼容回退 — 默认读取 ~/.codex/auth.json，也可用环境变量覆盖
 # export CODEX_ACCESS_TOKEN=""
 # export CODEX_ACCOUNT_ID=""
 ```
@@ -67,7 +71,8 @@ export DEEPSEEK_API_KEY="sk-xxx"
 | 变量 | 必须 | 说明 |
 |------|------|------|
 | `DEEPSEEK_API_KEY` | ✓ | DeepSeek API key |
-| `CODEX_ACCESS_TOKEN` | | 覆盖 Codex token（默认读 ~/.codex/auth.json） |
+| `CODEX_COMMAND` | | Codex CLI 路径；默认从 PATH 查找 `codex` |
+| `CODEX_ACCESS_TOKEN` | | 无法使用 app-server 时覆盖 OAuth token |
 | `CODEX_ACCOUNT_ID` | | Codex 账户 ID |
 | `REFRESH_INTERVAL` | | 刷新间隔（秒），默认 300 |
 | `WINDOW_OPACITY` | | 窗口不透明度 0.0-1.0，默认 0.92 |
@@ -109,5 +114,5 @@ python display.py --debug-json # 打印快照 JSON
 python display.py --debug-json  # 查看数据快照
 ```
 
-- **Codex 显示 "no auth"** — 运行 `codex` 重新认证，或在 .env 中设置 `CODEX_ACCESS_TOKEN`
+- **Codex 显示 "no auth"** — 运行 `codex login` 重新认证；旧版环境可设置 `CODEX_ACCESS_TOKEN`
 - **DeepSeek 显示 "no key"** — 检查 .env 中 `DEEPSEEK_API_KEY` 是否正确填写

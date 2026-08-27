@@ -15,6 +15,11 @@ from __future__ import annotations
 
 import json
 import os
+import queue
+import shutil
+import subprocess
+import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -64,14 +69,30 @@ def _window_label(minutes: int | None) -> str:
     if minutes <= 1440:
         return "Day"
     if minutes >= 10080:
-        return "Week"
+        return "Wk"
     return "Now"
 
 
 # ── 数据获取 ──────────────────────────────────────────────────────────────────
 
 CODEX_AUTH_PATH = Path.home() / ".codex" / "auth.json"
-CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
+CODEX_USAGE_URL = "https://chatgpt.com/backend-api/codex/usage"
+CODEX_LEGACY_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
+CODEX_APP_SERVER_TIMEOUT = 20
+
+
+def _find_codex_command():
+    """查找 Codex CLI；CODEX_COMMAND 可用于指定自定义可执行文件路径。"""
+    configured = os.environ.get("CODEX_COMMAND", "").strip()
+    if configured:
+        return configured
+
+    # Windows 下 shutil.which 会自动处理 .cmd/.exe，macOS/Linux 则直接查找 codex。
+    for candidate in ("codex", "codex.cmd", "codex.exe"):
+        command = shutil.which(candidate)
+        if command:
+            return command
+    return None
 
 
 def _load_codex_token():
@@ -91,35 +112,162 @@ def _load_codex_token():
     return tokens.get("access_token", ""), tokens.get("account_id", "")
 
 
-def get_codex_usage():
-    """通过直连 API 获取 OpenAI Codex 用量（不依赖 codexbar CLI）。"""
-    try:
-        access_token, account_id = _load_codex_token()
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Accept": "application/json",
-            "User-Agent": "quote0-burnout",
-        }
-        if account_id:
-            headers["ChatGPT-Account-Id"] = account_id
+def _send_app_server_message(process, message: dict):
+    """向 Codex app-server 写入一条 JSON-RPC 消息。"""
+    if process.stdin is None:
+        raise RuntimeError("Codex app-server stdin 不可用")
+    process.stdin.write(json.dumps(message, ensure_ascii=False) + "\n")
+    process.stdin.flush()
 
-        r = requests.get(CODEX_USAGE_URL, headers=headers, timeout=15)
-        r.raise_for_status()
-        return {"ok": True, "raw": r.json()}
 
-    except FileNotFoundError as e:
-        return {"ok": False, "status": "no auth", "detail": str(e)}
-    except requests.Timeout:
-        return {"ok": False, "status": "timeout"}
-    except requests.HTTPError as e:
-        detail = ""
+def _read_app_server_response(messages, request_id: int, timeout: float):
+    """从 app-server 异步输出中读取指定 request id 的响应，忽略通知消息。"""
+    deadline = time.monotonic() + timeout
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError(f"等待 Codex app-server 响应超时：{request_id}")
         try:
-            detail = e.response.text[:200]
-        except Exception:
-            pass
-        return {"ok": False, "status": f"HTTP {e.response.status_code}", "detail": detail}
-    except Exception as e:
-        return {"ok": False, "status": "error", "detail": str(e)[:200]}
+            message = messages.get(timeout=remaining)
+        except queue.Empty as e:
+            raise TimeoutError(f"等待 Codex app-server 响应超时：{request_id}") from e
+
+        if message is None:
+            raise RuntimeError("Codex app-server 已提前退出")
+        if message.get("id") != request_id:
+            continue
+        if "error" in message:
+            error = message.get("error") or {}
+            raise RuntimeError(error.get("message", "Codex app-server 返回错误"))
+        if "result" not in message:
+            raise RuntimeError("Codex app-server 响应缺少 result")
+        return message["result"]
+
+
+def _get_codex_usage_app_server():
+    """通过 Codex CLI 的受支持 app-server 协议获取额度。"""
+    command = _find_codex_command()
+    if not command:
+        raise FileNotFoundError("未找到 Codex CLI，请设置 CODEX_COMMAND 或将 codex 加入 PATH")
+
+    process = None
+    messages = queue.Queue()
+    try:
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        process = subprocess.Popen(
+            [command, "app-server", "--stdio"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+            creationflags=creationflags,
+        )
+
+        def read_messages():
+            """持续读取 stdout，避免 Windows 下 readline 阻塞主线程。"""
+            if process.stdout is None:
+                messages.put(None)
+                return
+            for line in process.stdout:
+                try:
+                    message = json.loads(line)
+                    if isinstance(message, dict):
+                        messages.put(message)
+                except json.JSONDecodeError:
+                    # app-server 只应输出 JSON；遇到版本噪声时继续等待正式响应。
+                    continue
+            messages.put(None)
+
+        threading.Thread(target=read_messages, daemon=True).start()
+
+        # app-server 的额度接口属于 experimental API，需要在握手时显式声明能力。
+        _send_app_server_message(
+            process,
+            {
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "clientInfo": {"name": "quote0-burnout", "version": "0.1.0"},
+                    "capabilities": {"experimentalApi": True},
+                },
+            },
+        )
+        _read_app_server_response(messages, 1, CODEX_APP_SERVER_TIMEOUT)
+        _send_app_server_message(process, {"method": "initialized"})
+        _send_app_server_message(
+            process,
+            {"id": 2, "method": "account/rateLimits/read"},
+        )
+        return _read_app_server_response(messages, 2, CODEX_APP_SERVER_TIMEOUT)
+    finally:
+        if process is not None:
+            # EOF 让 app-server 优雅退出；只有未退出时才强制结束当前子进程。
+            try:
+                if process.stdin is not None:
+                    process.stdin.close()
+            except (BrokenPipeError, OSError):
+                pass
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=2)
+
+
+def _get_codex_usage_http():
+    """使用 OAuth HTTP 接口作为旧版 CLI 或小组件场景的兼容回退。"""
+    access_token, account_id = _load_codex_token()
+    if not access_token:
+        raise FileNotFoundError("Codex 认证文件中没有 access_token")
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Accept": "application/json",
+        "User-Agent": "quote0-burnout",
+    }
+    if account_id:
+        headers["ChatGPT-Account-Id"] = account_id
+
+    for index, url in enumerate((CODEX_USAGE_URL, CODEX_LEGACY_USAGE_URL)):
+        r = requests.get(url, headers=headers, timeout=15)
+        try:
+            r.raise_for_status()
+        except requests.HTTPError:
+            # 新路径不存在时兼容旧版服务端；其他 HTTP 错误直接交给上层显示。
+            if r.status_code == 404 and index == 0:
+                continue
+            raise
+        return r.json()
+    raise RuntimeError("Codex HTTP 接口均不可用")
+
+
+def get_codex_usage():
+    """获取 Codex 用量：优先 app-server，失败后回退 OAuth HTTP 接口。"""
+    try:
+        return {"ok": True, "raw": _get_codex_usage_app_server(), "source": "app-server"}
+    except Exception as app_server_error:
+        try:
+            return {"ok": True, "raw": _get_codex_usage_http(), "source": "http-fallback"}
+        except FileNotFoundError as e:
+            return {
+                "ok": False,
+                "status": "no auth",
+                "detail": str(e),
+                "app_server_detail": str(app_server_error)[:200],
+            }
+        except requests.Timeout:
+            return {"ok": False, "status": "timeout"}
+        except requests.HTTPError as e:
+            detail = ""
+            try:
+                detail = e.response.text[:200]
+            except Exception:
+                pass
+            return {"ok": False, "status": f"HTTP {e.response.status_code}", "detail": detail}
+        except Exception as e:
+            return {"ok": False, "status": "error", "detail": str(e)[:200]}
 
 
 def get_deepseek_balance():
@@ -184,8 +332,82 @@ def _time_until(val) -> str:
     return dt_local.strftime("%m/%d %H:%M")
 
 
+def _first_value(mapping: dict, *keys):
+    """从兼容字段名中取第一个非空值，保留数值 0。"""
+    for key in keys:
+        if key in mapping and mapping[key] is not None:
+            return mapping[key]
+    return None
+
+
+def _parse_reset_credits(raw: dict) -> dict:
+    """提取重置卡数量和可安全展示的卡片信息，不保留卡片 ID。"""
+    payload = raw.get("rateLimitResetCredits")
+    if not isinstance(payload, dict):
+        payload = raw.get("rate_limit_reset_credits")
+    if not isinstance(payload, dict):
+        return {"available_count": None, "credits": []}
+
+    available_count = _first_value(payload, "availableCount", "available_count")
+    try:
+        available_count = max(0, int(float(available_count)))
+    except (TypeError, ValueError):
+        available_count = None
+
+    cards = []
+    raw_cards = payload.get("credits")
+    if isinstance(raw_cards, list):
+        for raw_card in raw_cards:
+            if not isinstance(raw_card, dict):
+                continue
+            if raw_card.get("status") not in (None, "available"):
+                continue
+
+            card = {}
+            title = _first_value(raw_card, "title")
+            if title:
+                card["title"] = str(title)
+            granted_at = _first_value(raw_card, "grantedAt", "granted_at")
+            if granted_at is not None:
+                card["granted_at"] = _time_until(granted_at)
+            expires_at = _first_value(raw_card, "expiresAt", "expires_at")
+            if expires_at is not None:
+                card["expires_at"] = _time_until(expires_at)
+            cards.append(card)
+
+    # availableCount 是服务端权威总数，详情数组可能被服务端截断。
+    if available_count is None:
+        available_count = len(cards)
+    return {"available_count": available_count, "credits": cards}
+
+
+def format_reset_credits(reset_credits: dict, compact: bool = False) -> str:
+    """将重置卡信息格式化为桌面/墨水屏可直接显示的文本。"""
+    if not isinstance(reset_credits, dict):
+        return ""
+    count = reset_credits.get("available_count")
+    if count is None:
+        return ""
+
+    try:
+        count = max(0, int(count))
+    except (TypeError, ValueError):
+        return ""
+
+    text = f"Reset {count}" if compact else f"重置卡 {count}张"
+    if count > 0:
+        cards = reset_credits.get("credits") or []
+        expiry = next(
+            (card.get("expires_at") for card in cards if card.get("expires_at")),
+            None,
+        )
+        if expiry:
+            text += f"  exp {expiry}" if compact else f" / 到期 {expiry}"
+    return text
+
+
 def build_codex_snapshot(codex: dict) -> dict:
-    """从 wham API 响应构建结构化的 Codex 快照。"""
+    """兼容 app-server 与旧 HTTP 响应，构建结构化的 Codex 快照。"""
     if not codex.get("ok"):
         status = codex.get("status", "error")
         return {
@@ -195,21 +417,60 @@ def build_codex_snapshot(codex: dict) -> dict:
             "short_reset": "?",
             "long_label": "?",
             "long_used_percent": None,
+            "long_reset": "?",
+            "reset_credits": {"available_count": None, "credits": []},
             "status": "error",
             "raw_status": status,
         }
 
     raw = codex.get("raw", {})
-    rate_limit = raw.get("rate_limit", {})
+    if not isinstance(raw, dict):
+        return {
+            "ok": False,
+            "short_label": "?",
+            "short_used_percent": None,
+            "short_reset": "?",
+            "long_label": "?",
+            "long_used_percent": None,
+            "long_reset": "?",
+            "reset_credits": {"available_count": None, "credits": []},
+            "status": "error",
+            "raw_status": "invalid response",
+        }
+    if isinstance(raw.get("result"), dict):
+        # 允许调用方直接传入完整 JSON-RPC 响应，便于诊断和测试。
+        raw = raw["result"]
 
-    primary = rate_limit.get("primary_window", {})
-    secondary = rate_limit.get("secondary_window", {})
-
-    short_pct = primary.get("used_percent")
-    short_reset_ts = primary.get("reset_at")
-
-    long_pct = secondary.get("used_percent")
-    long_reset_ts = secondary.get("reset_at")
+    rate_limits = raw.get("rateLimits")
+    if isinstance(rate_limits, dict):
+        # 新 app-server：camelCase 字段、primary/secondary 窗口。
+        primary = rate_limits.get("primary") or {}
+        secondary = rate_limits.get("secondary") or {}
+        short_pct = primary.get("usedPercent")
+        short_reset_ts = primary.get("resetsAt")
+        long_pct = secondary.get("usedPercent")
+        long_reset_ts = secondary.get("resetsAt")
+        short_label = (
+            _window_label(primary.get("windowDurationMins"))
+            if primary.get("windowDurationMins") is not None
+            else "5h"
+        )
+        long_label = (
+            _window_label(secondary.get("windowDurationMins"))
+            if secondary.get("windowDurationMins") is not None
+            else "Wk"
+        )
+    else:
+        # 旧 HTTP：snake_case 字段、primary_window/secondary_window 窗口。
+        rate_limit = raw.get("rate_limit", {})
+        primary = rate_limit.get("primary_window", {})
+        secondary = rate_limit.get("secondary_window", {})
+        short_pct = primary.get("used_percent")
+        short_reset_ts = primary.get("reset_at")
+        long_pct = secondary.get("used_percent")
+        long_reset_ts = secondary.get("reset_at")
+        short_label = "5h"
+        long_label = "Wk"
 
     # API 返回 float，归一化为 int
     try:
@@ -223,12 +484,13 @@ def build_codex_snapshot(codex: dict) -> dict:
 
     return {
         "ok": True,
-        "short_label": "5h",
+        "short_label": short_label,
         "short_used_percent": short_pct,
-        "short_reset": _time_until(short_reset_ts) if short_reset_ts else "?",
-        "long_label": "Wk",
+        "short_reset": _time_until(short_reset_ts) if short_reset_ts is not None else "?",
+        "long_label": long_label,
         "long_used_percent": long_pct,
-        "long_reset": _time_until(long_reset_ts) if long_reset_ts else "?",
+        "long_reset": _time_until(long_reset_ts) if long_reset_ts is not None else "?",
+        "reset_credits": _parse_reset_credits(raw),
         "status": _pct_status(short_pct),
         "raw_status": "",
     }

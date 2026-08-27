@@ -3,9 +3,11 @@
 // 改下面 CONFIG 的三个值即可使用
 
 // ═══════════════════════ CONFIG ═══════════════════════
-const CODEX_TOKEN  = "";  // ~/.codex/auth.json → tokens.access_token
+const CODEX_TOKEN  = "";  // OAuth access token（仅小组件直连回退接口需要）
 const CODEX_ACCT   = "";  // ~/.codex/auth.json → tokens.account_id（可选）
 const DEEPSEEK_KEY = "";  // DeepSeek API key（sk-...）
+const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/codex/usage";
+const CODEX_LEGACY_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 // ══════════════════════════════════════════════════════
 
 // ── 数据获取 ──────────────────────────────────────────
@@ -18,23 +20,47 @@ function getCodex() {
     };
     if (CODEX_ACCT) headers["ChatGPT-Account-Id"] = CODEX_ACCT;
 
-    const r = $http.get({
-      url: "https://chatgpt.com/backend-api/wham/usage",
-      header: headers,
-      timeout: 8
-    });
-    if (r.error) return { ok: false, msg: "请求失败" };
+    let d = null;
+    let lastError = null;
+    // iOS 小组件无法启动本机 app-server，因此使用新的 Codex HTTP 路径，
+    // 并保留旧路径以兼容尚未切换的服务端。
+    for (const url of [CODEX_USAGE_URL, CODEX_LEGACY_USAGE_URL]) {
+      const r = $http.get({ url: url, header: headers, timeout: 8 });
+      if (!r.error && r.data) {
+        d = r.data;
+        break;
+      }
+      lastError = r.error;
+    }
+    if (!d) return { ok: false, msg: lastError ? "请求失败" : "无数据" };
 
-    const d = r.data;
-    const rl = d.rate_limit || {};
-    const p = rl.primary_window || {};
-    const s = rl.secondary_window || {};
+    const rl = d.rateLimits || d.rate_limit || {};
+    const p = rl.primary || rl.primary_window || {};
+    const s = rl.secondary || rl.secondary_window || {};
+    const pUsed = p.usedPercent !== undefined ? p.usedPercent : p.used_percent;
+    const sUsed = s.usedPercent !== undefined ? s.usedPercent : s.used_percent;
+    const pReset = p.resetsAt !== undefined ? p.resetsAt : p.reset_at;
+    const sReset = s.resetsAt !== undefined ? s.resetsAt : s.reset_at;
+    const resetCredits = d.rateLimitResetCredits || d.rate_limit_reset_credits || {};
+    const countValue = resetCredits.availableCount !== undefined
+      ? resetCredits.availableCount : resetCredits.available_count;
+    const resetCount = countValue !== undefined && countValue !== null && Number.isFinite(Number(countValue))
+      ? Number(countValue) : null;
+    const cardList = Array.isArray(resetCredits.credits) ? resetCredits.credits : [];
+    const firstCard = cardList.find(function(card) {
+      return card && (card.status === undefined || card.status === "available");
+    });
+    const resetExpires = firstCard
+      ? (firstCard.expiresAt !== undefined ? firstCard.expiresAt : firstCard.expires_at)
+      : null;
     return {
       ok: true,
-      sUsed: p.used_percent || 0,
-      sReset: p.reset_at || null,
-      lUsed: s.used_percent || 0,
-      lReset: s.reset_at || null
+      sUsed: Number(pUsed) || 0,
+      sReset: pReset || null,
+      lUsed: Number(sUsed) || 0,
+      lReset: sReset || null,
+      resetCount: resetCount,
+      resetExpires: resetExpires || null
     };
   } catch (e) { return { ok: false, msg: String(e) }; }
 }
@@ -129,6 +155,11 @@ $widget.setTimeline(function(ctx) {
     const lr = 100 - cx.lUsed;
     rows.push({ text: "5h " + pctBar(cx.sUsed, barW) + " " + sr.toFixed(0) + "% " + fmtTime(cx.sReset), size: fSize });
     rows.push({ text: "Wk " + pctBar(cx.lUsed, barW) + " " + lr.toFixed(0) + "% " + fmtTime(cx.lReset), size: fSize });
+    if (cx.resetCount !== null) {
+      let resetText = "Reset " + cx.resetCount;
+      if (cx.resetExpires) resetText += " exp " + fmtTime(cx.resetExpires);
+      rows.push({ text: resetText, size: sSize });
+    }
   } else {
     rows.push({ text: "Codex: " + (cx.msg || "error"), size: fSize });
   }

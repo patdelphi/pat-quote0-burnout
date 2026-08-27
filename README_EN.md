@@ -19,10 +19,11 @@ Week [████████████░░░░░░] 69%  5d23h
 $18.42                        OK
 ```
 
-- **Codex**: dual-row (5h / Week) with inline dot-grid bar. Shows remaining% + reset countdown.
+- **Codex**: dual-row (5h / Week) with inline dot-grid bar. Shows remaining% + reset time.
 - **DeepSeek**: balance in 21px VCR OSD Mono + status badge.
 - **Fonts**: PixelOperator 16px / VCR OSD Mono 21px / Minecraftia 8px.
-- Codex data via direct OAuth API — **no CLI dependency**.
+- Codex data via the supported Codex CLI `app-server`, reusing the current login.
+- Older environments automatically fall back to the OAuth HTTP API; the JSBox widget uses the compatible HTTP API.
 
 > Full design spec, API reference, and rendering details in [`skill/`](skill/).
 
@@ -44,7 +45,8 @@ cp config.example.env .env
 | `QUOTE0_API_KEY` | ✓ | Quote/0 API key |
 | `QUOTE0_DEVICE_ID` | ✓ | Device ID |
 | `DEEPSEEK_API_KEY` | | DeepSeek API key |
-| `CODEX_ACCESS_TOKEN` | | Override Codex token (default: ~/.codex/auth.json) |
+| `CODEX_COMMAND` | | Codex CLI path; defaults to `codex` from PATH |
+| `CODEX_ACCESS_TOKEN` | | OAuth fallback token (default: ~/.codex/auth.json) |
 
 ## Usage
 

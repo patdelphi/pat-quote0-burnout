@@ -21,7 +21,7 @@ Render and push a 296×152 B&W AI usage dashboard to MindReset Quote/0 devices.
 - Pushing image content to Quote/0 via the HTTP API
 - Debugging rendering or layout issues (Pillow, pixel fonts)
 - Setting up launchd scheduling for periodic updates
-- Fetching OpenAI Codex plan usage via OAuth API
+- Fetching OpenAI Codex plan usage via the local app-server protocol
 
 ## Architecture
 
@@ -34,37 +34,41 @@ config.example.env
 
 ### Data flow
 
-1. `display.py` → `_load_codex_token()` reads `~/.codex/auth.json`
-2. `GET https://chatgpt.com/backend-api/wham/usage` → `rate_limit.primary_window`, `secondary_window`
+1. `display.py` → `codex app-server --stdio` performs the JSON-RPC handshake
+2. `account/rateLimits/read` → `rateLimits.primary`, `secondary`
 3. DeepSeek: `GET https://api.deepseek.com/user/balance`
 4. `build_snapshot()` → structured dict
 5. `render.py::render_image()` → Pillow → pure B&W PNG
 6. `push_image()` → Quote/0 Image API
 
-## Codex Data (Direct OAuth API)
+## Codex Data (Local app-server)
 
-No CLI dependency. Token from `~/.codex/auth.json` or `CODEX_ACCESS_TOKEN` env var.
+The default path delegates authentication and token refresh to the installed Codex CLI.
+If the CLI is unavailable, the implementation falls back to the OAuth HTTP API using
+`~/.codex/auth.json` or `CODEX_ACCESS_TOKEN`.
 
-```python
-GET https://chatgpt.com/backend-api/wham/usage
-Authorization: Bearer <token>
-ChatGPT-Account-Id: <account_id>
+```json
+{"id": 1, "method": "initialize", "params": {
+  "clientInfo": {"name": "quote0-burnout", "version": "0.1.0"},
+  "capabilities": {"experimentalApi": true}
+}}
+{"id": 2, "method": "account/rateLimits/read"}
 ```
 
 Response shape:
-```python
+```json
 {
-    "plan_type": "pro",
-    "rate_limit": {
-        "primary_window": {"used_percent": 72.0, "reset_at": 1717000000},
-        "secondary_window": {"used_percent": 41.0, "reset_at": 1717600000},
+    "rateLimits": {
+        "primary": {"usedPercent": 72, "windowDurationMins": 300, "resetsAt": 1717000000},
+        "secondary": {"usedPercent": 41, "windowDurationMins": 10080, "resetsAt": 1717600000}
     }
 }
 ```
 
-- `used_percent` → float (72.0 = 72% used)
-- `reset_at` → unix timestamp (int)
-- Labels hardcoded: primary → "5h", secondary → "Week"
+- `usedPercent` → numeric percentage used
+- `resetsAt` → Unix timestamp in seconds
+- `windowDurationMins` → determines the display label
+- The parser also accepts the legacy `rate_limit.primary_window` structure.
 
 ## Snapshot Format
 
@@ -75,7 +79,7 @@ snapshot = {
         "short_label": "5h",
         "short_used_percent": 72,
         "short_reset": "4h41m",
-        "long_label": "Week",
+        "long_label": "Wk",
         "long_used_percent": 41,
         "long_reset": "5d22h",
         "status": "warn",

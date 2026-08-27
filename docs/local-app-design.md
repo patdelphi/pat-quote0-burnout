@@ -7,7 +7,7 @@
 | 项目 | 说明 |
 |------|------|
 | 运行平台 | macOS / Linux（bash 脚本 + launchd 定时） |
-| 数据源 | Codex（OpenAI wham API）、DeepSeek（balance API） |
+| 数据源 | Codex（本机 app-server，兼容回退 OpenAI HTTP API）、DeepSeek（balance API） |
 | 输出方式 | Pillow 渲染 296×152 黑白 PNG → 推送到 Quote/0 墨水屏 |
 | 依赖 | requests、Pillow |
 | 配置 | `.env` 文件（API Key、Device ID 等） |
@@ -75,7 +75,7 @@ quote0-burnout/
     ▼
 display.py :: build_snapshot()
     │
-    ├── get_codex_usage()     → chatgpt.com API
+    ├── get_codex_usage()     → codex app-server（失败时回退 chatgpt.com API）
     └── get_deepseek_balance() → deepseek.com API
     │
     ▼
@@ -133,7 +133,9 @@ local_app.py :: tkinter 窗口渲染
 # 必填
 DEEPSEEK_API_KEY="sk-xxx"
 
-# 可选（默认读 ~/.codex/auth.json）
+# 可选（默认调用 PATH 中的 codex app-server）
+# CODEX_COMMAND=""
+# 兼容回退时使用：默认读 ~/.codex/auth.json
 # CODEX_ACCESS_TOKEN=""
 # CODEX_ACCOUNT_ID=""
 
@@ -177,7 +179,7 @@ WINDOW_OPACITY=0.92      # 窗口不透明度 0.0-1.0，默认 0.92
 
 ## 9. 风险与约束
 
-- Codex token 有效期有限，过期后需重新通过 `codex` CLI 认证
+- Codex CLI 会负责刷新登录状态；只有 HTTP 回退使用的 token 过期时才需重新认证
 - DeepSeek API 可能有频率限制，5 分钟间隔足够安全
 - tkinter 在 Windows 高 DPI 下可能需要额外处理（`ctypes` 设置 DPI 感知）
 - `overrideredirect` 模式下窗口无标题栏，需自行处理拖动和关闭

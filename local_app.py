@@ -32,7 +32,9 @@ if not env_path.exists():
         env_path.write_text(
             '# DeepSeek API Key（必填）\n'
             'export DEEPSEEK_API_KEY=""\n\n'
-            '# Codex 认证\n'
+            '# Codex 额度（默认调用本机 Codex app-server）\n'
+            '# export CODEX_COMMAND=""\n'
+            '# 兼容回退时使用 OAuth token\n'
             '# export CODEX_ACCESS_TOKEN=""\n'
             '# export CODEX_ACCOUNT_ID=""\n\n'
             '# 本地弹窗配置\n'
@@ -67,7 +69,7 @@ import threading
 import tkinter as tk
 from tkinter import font as tkfont
 
-from display import build_snapshot
+from display import build_snapshot, format_reset_credits
 
 # ── 配置 ──────────────────────────────────────────────────────────────────────
 
@@ -253,6 +255,11 @@ class Quote0Window:
                                      bg=BG_COLOR, fg=FG_COLOR, anchor="e")
         self.lbl_r2_info.pack(side="left")
 
+        # 重置卡信息：显示可用数量和最近到期时间。
+        self.lbl_reset_credits = tk.Label(self.codex_frame, text="重置卡 --", font=self.font_small,
+                                           bg=BG_COLOR, fg=FG_DIM, anchor="w")
+        self.lbl_reset_credits.pack(anchor="w", pady=(4, 0))
+
         # 分隔线
         tk.Frame(self.root, height=1, bg=DIVIDER).pack(fill="x", padx=pad, pady=3)
 
@@ -398,6 +405,9 @@ class Quote0Window:
             self.lbl_r2_label.config(text=cx.get("long_label", "Wk"))
             self.lbl_r2_info.config(text=f"{l_remaining}% / {l_reset}", fg=status_color(l_status))
             self._draw_bar(self.can_r2, l_remaining, l_status)
+
+            reset_text = format_reset_credits(cx.get("reset_credits"))
+            self.lbl_reset_credits.config(text=reset_text or "重置卡 --", fg=FG_DIM)
         else:
             err = cx.get("raw_status", "error")
             self.lbl_r1_label.config(text="Codex")
@@ -406,6 +416,7 @@ class Quote0Window:
             self.lbl_r2_label.config(text="")
             self.lbl_r2_info.config(text="", fg=FG_DIM)
             self._draw_bar(self.can_r2, 0, "error")
+            self.lbl_reset_credits.config(text="重置卡 --", fg=FG_DIM)
 
         # DeepSeek（ok 时不显示状态，仅 warn/hot/error 时显示）
         if ds.get("ok"):

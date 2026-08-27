@@ -12,6 +12,8 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
+from display import format_reset_credits
+
 W, H = 296, 152
 PAD = 10
 
@@ -146,6 +148,10 @@ def _render_v5(img: Image.Image, draw: ImageDraw.ImageDraw, snap: dict):
         # Logo + section label
         _logo(LOGO_CODEX, y)
         draw.text((LABEL_X, y), "CODEX", font=label, fill=BLACK)
+        card_text = format_reset_credits(cx.get("reset_credits"), compact=True)
+        if card_text:
+            title_w, _ = _tsize(draw, "CODEX", label)
+            draw.text((LABEL_X + title_w + 6, y + 4), card_text, font=small, fill=BLACK)
         y += 20
 
         # Pre-compute max note width so both bars are equal width
@@ -245,6 +251,8 @@ if __name__ == "__main__":
         "codex": {"ok": True, "short_label": "5h", "short_used_percent": 72,
                   "short_reset": "2h13m", "long_label": "Week",
                   "long_used_percent": 41, "long_reset": "123h3m",
+                  "reset_credits": {"available_count": 1,
+                                    "credits": [{"expires_at": "09/24 19:01"}]},
                   "status": "ok"},
         "deepseek": {"ok": True, "balance": 18.42, "currency": "USD",
                       "symbol": "$", "status": "ok"},
