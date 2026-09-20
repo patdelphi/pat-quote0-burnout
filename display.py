@@ -578,8 +578,20 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="AI 额度数据获取与快照构建")
     parser.add_argument("--debug-json", action="store_true", help="打印快照 JSON，不推送")
+    # Rand/0 Display Mode：本地 WebSocket 推送 200×200 图片
+    parser.add_argument("--display-mode", metavar="IP", help="通过本地 WebSocket 推送到指定 IP 的 Rand/0 设备")
+    parser.add_argument("--gray4", action="store_true", help="Display Mode 使用四级灰（默认黑白 bw）")
     args = parser.parse_args()
 
-    if args.debug_json:
+    if args.display_mode:
+        # 惰性导入，避免无 websocket-client 时影响其他命令
+        import rand0_display
+        mode = "gray4" if args.gray4 else "bw"
+        snapshot = build_snapshot()
+        payload = rand0_display.render_frame(snapshot, mode)
+        print(f"[{mode}] 帧 {len(payload)} 字节 -> {args.display_mode}")
+        received = rand0_display.push_frame(args.display_mode, mode, payload)
+        print(f"推送完成，收到设备消息 {received} 条")
+    elif args.debug_json:
         snapshot = build_snapshot()
         print(json.dumps(snapshot, ensure_ascii=False, indent=2))

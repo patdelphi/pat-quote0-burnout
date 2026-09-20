@@ -18,9 +18,23 @@ import os
 import sys
 from pathlib import Path
 
+
+def _config_dir() -> Path:
+    """用户配置文件目录：打包后为 exe 所在目录，源码运行时为项目目录。"""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent
+    return Path(__file__).parent
+
+
+def _resource_dir(sub: str) -> Path:
+    """资源目录（字体等）：打包后从 _MEIPASS 临时目录读取。"""
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).parent))
+    return base / sub
+
+
 # 必须先加载 .env，再导入 display（display 在模块级别读取环境变量）
-env_path = Path(__file__).parent / ".env"
-example_path = Path(__file__).parent / "config.example.env"
+env_path = _config_dir() / ".env"
+example_path = _config_dir() / "config.example.env"
 
 # 如果 .env 不存在，自动创建
 if not env_path.exists():
@@ -92,7 +106,7 @@ BAR_FILL_HOT  = "#f38ba8"
 DIVIDER       = "#45475a"
 
 # 字体路径
-ASSETS_DIR = Path(__file__).parent / "assets" / "fonts"
+ASSETS_DIR = _resource_dir("assets/fonts")
 PIXEL_FONT_PATH = ASSETS_DIR / "PixelOperator.ttf"
 VCR_FONT_PATH   = ASSETS_DIR / "VCR_OSD_MONO_1.001.ttf"
 

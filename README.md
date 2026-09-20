@@ -108,6 +108,48 @@ python display.py --check      # 自检
 python display.py --debug-json # 打印快照 JSON
 ```
 
+### Rand/0 Display Mode（本地 WebSocket）
+
+将 200×200 仪表盘通过本地 WebSocket 推送到 MindReset Rand/0 设备的 Display Mode，支持黑白与四级灰：
+
+```bash
+python display.py --display-mode 192.168.1.100          # 黑白（默认）
+python display.py --display-mode 192.168.1.100 --gray4  # 四级灰
+python rand0_display.py --preview --mode gray4          # 本地预览 200×200
+```
+
+需要设备已进入 Display Mode 并显示 IP，且与电脑在同一局域网。依赖 `websocket-client`。
+
+本地窗口（手动预览/推送 + 可选定时自动推送）：
+
+```bash
+python rand0_app.py
+```
+
+### 打包为 exe
+
+两个入口各自可打包成独立单文件 exe，字体等资源已内置，无需额外拷贝 assets。
+
+**Windows 桌面弹窗（local_app.py）**
+
+```bash
+pyinstaller --noconfirm --onefile --windowed --name Quote0Local --add-data "assets;assets" local_app.py
+```
+
+产物在 `dist\Quote0Local.exe`。首次运行会在 exe **同目录自动创建 `.env`**，编辑填入 `DEEPSEEK_API_KEY` 后再运行。
+
+**墨水屏推送窗口（rand0_app.py）**
+
+```bash
+pyinstaller --noconfirm --onefile --windowed --name Rand0Display --add-data "assets;assets" rand0_app.py
+```
+
+产物在 `dist\Rand0Display.exe`。运行 exe 优先读取**同目录下的 `.env`**（若不存在则跳过）。首次运行若 DeepSeek 显示 "no key"，请在 exe 同目录自建 `.env` 并填写：
+
+```bash
+export DEEPSEEK_API_KEY="你的key"
+```
+
 ## 故障排查
 
 ```bash
