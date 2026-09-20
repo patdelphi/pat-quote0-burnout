@@ -1,5 +1,10 @@
 # Chat History
 
+## 2026-09-20 15:00:00 +08:00
+
+- 用户：两个 app 增加"最小化到系统托盘"，任务栏不显示。
+- 助手：新建 tray_util.py 共享托盘模块（最小化到托盘/双击恢复/托盘菜单/无托盘降级）；rand0_app.py 最小化按钮入托盘、local_app.py 右键菜单加"最小化到托盘"；requirements 加 pystray；重新打包两个 exe；更新 README 托盘说明；提交并发布 v0.2。
+
 ## 2026-09-20 14:00:00 +08:00
 
 - 用户：打包 local_app.py 为 exe，更新 README。

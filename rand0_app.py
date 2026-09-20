@@ -54,6 +54,7 @@ _load_env()
 
 import rand0_display
 from display import build_snapshot
+from tray_util import TrayManager
 
 # 从 .env 读取配置（窗日用，缺失时用默认值）
 _saved_ip = os.environ.get("RAND0_IP", "").strip()
@@ -97,6 +98,9 @@ class Rand0App:
             self.combo_interval.set(str(_iv))
             self._schedule_push(_iv)
         # 其余情况 combo 保持默认（下拉框"关"），即关闭定时推送
+
+        # 最小化到系统托盘（任务栏不显示）
+        self.tray = TrayManager(self.root, "Rand/0 Display Mode")
 
     # ── UI 组装 ────────────────────────────────────────────────────────────
 
@@ -285,6 +289,7 @@ class Rand0App:
 
     def on_close(self):
         self._cancel_timer()
+        self.tray.stop()
         self.root.destroy()
 
     def run(self):

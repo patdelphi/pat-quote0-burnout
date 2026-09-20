@@ -84,6 +84,7 @@ import tkinter as tk
 from tkinter import font as tkfont
 
 from display import build_snapshot, format_reset_credits
+from tray_util import TrayManager
 
 # ── 配置 ──────────────────────────────────────────────────────────────────────
 
@@ -147,6 +148,9 @@ class Quote0Window:
         self.root.attributes("-topmost", True)    # 置顶
         self.root.configure(bg=BG_COLOR)
 
+        # 系统托盘（最小化到托盘 / 退出）
+        self.tray = TrayManager(self.root, "quote0-burnout")
+
         # Windows 无边框窗口设置透明度（SetLayeredWindowAttributes）
         self._set_window_opacity(WINDOW_OPACITY)
 
@@ -161,6 +165,7 @@ class Quote0Window:
         self._menu = tk.Menu(self.root, tearoff=0, bg=BG_COLOR, fg=FG_COLOR,
                              activebackground=DIVIDER, activeforeground=FG_COLOR)
         self._menu.add_command(label="刷新", command=self.refresh)
+        self._menu.add_command(label="最小化到托盘", command=self.tray.to_tray)
         self._menu.add_command(label="退出", command=self.quit)
         self.root.bind("<Button-3>", self._show_menu)
 
@@ -477,6 +482,7 @@ class Quote0Window:
     # ── 退出 ────────────────────────────────────────────────────────────────────
 
     def quit(self):
+        self.tray.stop()
         self.root.destroy()
         sys.exit(0)
 
