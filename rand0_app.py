@@ -64,6 +64,7 @@ _saved_ip = os.environ.get("RAND0_IP", "").strip()
 _default_mode = os.environ.get("RAND0_MODE", "bw").strip() or "bw"
 _default_interval = os.environ.get("RAND0_INTERVAL", "关").strip()
 _default_timeout = float(os.environ.get("RAND0_TIMEOUT", "5"))
+_default_invert = os.environ.get("RAND0_INVERT", "0").strip() not in ("", "0", "false", "no", "关")
 
 BG = "#1e1e2e"
 FG = "#cdd6f4"
@@ -90,6 +91,7 @@ class Rand0App:
         # 定时推送状态
         self._timer_id = None
         self._pushing = False
+        self._interval_active = False
         # 应用 .env 中的默认模式与自动推送间隔
         self.var_mode.set(_default_mode)
         # 推送间隔：空/0/"关" → 关闭定期推送；正整数 → 每 N 分钟推送一次
@@ -99,7 +101,13 @@ class Rand0App:
             _iv = 0
         if _iv > 0:
             self.combo_interval.set(str(_iv))
-            self._schedule_push(_iv)
+            # 启动时立即拉取并推送一次（同时刷新预览），之后再按周期推送
+            self._interval_active = False
+            self.on_interval_change()
+        else:
+            # 未开启定时推送：启动也自动拉取并刷新一次预览
+            self._log("启动自动拉取预览…")
+            self.on_preview()
         # 其余情况 combo 保持默认（下拉框"关"），即关闭定时推送
 
         # 最小化到系统托盘（任务栏不显示）
@@ -125,6 +133,14 @@ class Rand0App:
                            bg=BG, fg=FG, selectcolor=BADGE_BG,
                            activebackground=BG, activeforeground=ACCENT).grid(
                 row=0, column=2 if val == "bw" else 3, sticky="w")
+
+        # 反显开关：点击切换黑底白字，立即写 .env 并刷新预览
+        self.var_invert = tk.BooleanVar(value=_default_invert)
+        tk.Checkbutton(top, text="反显", variable=self.var_invert,
+                       command=self._on_invert_toggle,
+                       bg=BG, fg=FG, selectcolor=BG,
+                       activebackground=BG, activeforeground=ACCENT).grid(
+            row=0, column=4, padx=(8, 0), sticky="w")
 
         for c in range(3):
             top.grid_columnconfigure(c, weight=0)
@@ -179,31 +195,22 @@ class Rand0App:
         return ip
 
     def _save_config(self):
-        """把窗口里的 IP、模式、自动推送间隔写回 .env，启动时复用。"""
-        values = {
-            "RAND0_IP": self.var_ip.get().strip(),
-            "RAND0_MODE": self.var_mode.get(),
-            "RAND0_INTERVAL": self.combo_interval.get(),
-            # 推送/连接超时（秒），读取自 .env 或默认 5
-            "RAND0_TIMEOUT": str(_default_timeout),
-        }
-        lines = ENV_PATH.read_text(encoding="utf-8").splitlines() if ENV_PATH.exists() else []
-        # 保留既有键值，替换窗口管理的这几个键
-        keys = set(values)
-        filtered = [l for l in lines if not l.startswith(tuple(k + "=" for k in keys))]
-        for key, val in values.items():
-            filtered.append(f"export {key}=\"{val}\"")
-        ENV_PATH.write_text("\n".join(filtered) + "\n", encoding="utf-8")
+        """app 不主动改写 .env；仅当 .env 不存在时创建一份模板供用户手动编辑。
+
+        窗口内修改的 IP/模式/反显/间隔等仅对本次会话生效。
+        """
+        if not ENV_PATH.exists():
+            ensure_env(CONFIG_DIR)
 
     def _new_snapshot(self):
         """后台线程内拉取真实数据。"""
         return build_snapshot()
 
-    def _preview_image(self, snap, mode) -> Image.Image:
-        """按模式获取 200×200 Image（用于窗口展示）。"""
+    def _preview_image(self, snap, mode, invert: bool = False) -> Image.Image:
+        """按模式获取 200×200 Image（用于窗口展示）。invert=True 时反显。"""
         if mode == "bw":
-            return rand0_display._render_bw_image(snap)
-        return rand0_display._render_gray4_image(snap)
+            return rand0_display._render_bw_image(snap, invert)
+        return rand0_display._render_gray4_image(snap, invert)
 
     def _show_image(self, img: Image.Image):
         """把 200×200 图放大显示到预览区。"""
@@ -214,21 +221,37 @@ class Rand0App:
 
     # ── 按钮动作 ────────────────────────────────────────────────────────────
 
+    def _on_invert_toggle(self):
+        """切换反显：写入 .env，拉取并刷新预览后立即推送。"""
+        self._save_config()
+        # on_push(force=True) 内部会先刷新预览（用最新数据）再推送，且不被进行中的推送阻塞
+        self._log("反显已切换，刷新预览并推送…")
+        self.on_push(force=True)
+
     def on_preview(self):
         """后台拉数据、渲染、显示预览。"""
         self._log("拉取数据并渲染预览…")
         def work():
             try:
                 snap = self._new_snapshot()
-                img = self._preview_image(snap, self.var_mode.get())
-                self.root.after(0, lambda: self._show_image(img))
+                self._refresh_preview(snap)
                 self.root.after(0, lambda: self._log("预览已生成"))
             except Exception as e:
                 self.root.after(0, lambda: self._log(f"预览失败：{e}"))
         threading.Thread(target=work, daemon=True).start()
 
-    def on_push(self):
-        if self._pushing:
+    def _refresh_preview(self, snap):
+        """用已拉取的数据（后台线程）在主线程刷新预览图。"""
+        try:
+            img = self._preview_image(snap, self.var_mode.get(),
+                                      invert=self.var_invert.get())
+            self.root.after(0, lambda: self._show_image(img))
+        except Exception as e:
+            self.root.after(0, lambda: self._log(f"预览渲染失败：{e}"))
+
+    def on_push(self, force=False):
+        # 普通调用在推送进行中时跳过；force=True（如切换反显）不阻塞，立即重拉+刷新预览+推送
+        if self._pushing and not force:
             return
         try:
             ip = self._get_ip()
@@ -243,8 +266,10 @@ class Rand0App:
         def work():
             try:
                 snap = self._new_snapshot()
+                # 只要拉取了数据就刷新一次预览（推送前先看到最新画面）
+                self._refresh_preview(snap)
                 mode = self.var_mode.get()
-                payload = rand0_display.render_frame(snap, mode)
+                payload = rand0_display.render_frame(snap, mode, invert=self.var_invert.get())
                 received = rand0_display.push_frame(
                     ip, mode, payload, timeout=_default_timeout,
                     on_message=lambda m: self.root.after(0, self._log, m))
@@ -263,11 +288,17 @@ class Rand0App:
         interval = self.combo_interval.get()
         if interval == "关":
             self._cancel_timer()
+            self._interval_active = False
             self._log("已关闭自动推送")
-        else:
-            self._schedule_push(int(interval))
-        # 回写间隔到 .env，便于下次启动复用
+            self._save_config()
+            return
+        self._schedule_push(int(interval))
         self._save_config()
+        # 每次开启定时推送时立即拉数据并推送一帧（含从启动触发），之后按周期推
+        if not self._interval_active:
+            self._interval_active = True
+            self._log("定时推送已开启，立即推第一帧…")
+            self.on_push()
 
     def _schedule_push(self, minutes: int):
         self._cancel_timer()

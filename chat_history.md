@@ -1,6 +1,18 @@
 # Chat History
 
-## 2026-09-20 16:00:00 +08:00
+## 2026-09-20 20:00:00 +08:00
+
+- 用户：启动也自动预览——只要拉取数据就刷新一次预览；点击预览按钮则重新拉取并刷新。
+- 助手：rand0_app 抽取 _refresh_preview(snap) 复用；on_preview 与 on_push work 拉取数据后均调用它刷新预览；启动时若未开定时也自动拉取预览；更新 chat_history；测试与 import 验证通过。
+
+- 用户：① 启动即拉取推送一次、之后按间隔；② 反显参数写 .env 并启动读取；③ 切换反显自动刷新预览。
+- 助手：rand0_app 启动时若定时间隔>0 立即 on_interval_change → 首次推送一帧后按周期推；反显 Checkbutton 加 command=_on_invert_toggle（写 .env + 刷新预览）；复核反显已持久化（RAND0_INVERT）；新增 tests/test_timing_logic.py 4 例，验证启动即推、改间隔不重复推、关闭不推、反显保存并预览；更新 README/chat_history；import 与启动验证通过。
+
+- 用户：字体还是看不清，要求换字体；自动推送前要自动先拉取数据。
+- 助手：rand0_display 设备端文字由像素字体改为系统微软雅黑粗体（找不到回退像素）；rand0_app 首次开启定时推送时立即拉数据推第一帧；更新 README/chat_history；import 与字体加载验证通过。
+
+- 用户：加粗效果差，要求恢复正常字体、放大字号、缩小 display 区、加反显开关。
+- 助手：撤销全部 stroke 加粗；rand0_display 字号放大一号（label 18/bal 22）且 ROW_H 微调；新增 invert 反显参数（黑底白字）+ --invert；rand0_app 增加"反显"勾选开关并接入预览/推送、RAND0_INVERT 持久化；更新 README/chat_history/env 模板；预览验证布局无溢出且反显正常。
 
 - 用户：两个 app 无 .env 时自动创建 sample。
 - 助手：新建 env_util.py 含内置模板与 ensure_env()；两个 app 启动时若无 .env 自动创建 .env 与 .env.sample；更新 README、chat_history。

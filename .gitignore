@@ -6,7 +6,8 @@ __pycache__/
 *.pyo
 /tmp/
 logo_region_*.png
-preview_v3.pngtest_render.png
+preview_*.png
+# preview_v3.pngtest_render.png
 
 # PyInstaller 构建产物（保留本地 dist，不入库）
 /build/
