@@ -89,7 +89,7 @@ export DEEPSEEK_API_KEY="sk-xxx"
 ### Windows 桌面弹窗
 
 ```bash
-# 首次运行会自动创建 .env，编辑填入 DEEPSEEK_API_KEY 后再运行
+# 首次运行会自动创建 .env 与 .env.sample，编辑 .env 填入 DEEPSEEK_API_KEY 后再运行
 python local_app.py
 ```
 
@@ -124,6 +124,7 @@ python rand0_display.py --preview --mode gray4          # 本地预览 200×200
 本地窗口（手动预览/推送 + 可选定时自动推送）：
 
 ```bash
+# 首次运行会自动创建 .env 与 .env.sample
 python rand0_app.py
 ```
 

@@ -50,6 +50,9 @@ def _load_env() -> None:
 
 
 # 必须先加载 .env，再导入 display / rand0_display（它们在模块级读取环境变量）
+# 若无 .env，先自动创建 .env 与 .env.sample 模板
+from env_util import ensure_env
+ensure_env(CONFIG_DIR)
 _load_env()
 
 import rand0_display

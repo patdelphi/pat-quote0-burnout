@@ -18,6 +18,8 @@ import os
 import sys
 from pathlib import Path
 
+from env_util import ensure_env
+
 
 def _config_dir() -> Path:
     """用户配置文件目录：打包后为 exe 所在目录，源码运行时为项目目录。"""
@@ -34,32 +36,9 @@ def _resource_dir(sub: str) -> Path:
 
 # 必须先加载 .env，再导入 display（display 在模块级别读取环境变量）
 env_path = _config_dir() / ".env"
-example_path = _config_dir() / "config.example.env"
 
-# 如果 .env 不存在，自动创建
-if not env_path.exists():
-    if example_path.exists():
-        # 从 config.example.env 复制
-        env_path.write_text(example_path.read_text(encoding="utf-8"), encoding="utf-8")
-    else:
-        # 创建默认 .env
-        env_path.write_text(
-            '# DeepSeek API Key（必填）\n'
-            'export DEEPSEEK_API_KEY=""\n\n'
-            '# Codex 额度（默认调用本机 Codex app-server）\n'
-            '# export CODEX_COMMAND=""\n'
-            '# 兼容回退时使用 OAuth token\n'
-            '# export CODEX_ACCESS_TOKEN=""\n'
-            '# export CODEX_ACCOUNT_ID=""\n\n'
-            '# 本地弹窗配置\n'
-            'export REFRESH_INTERVAL=300\n'
-            'export WINDOW_OPACITY=0.92\n\n'
-            '# 字体配置\n'
-            'export FONT_FAMILY="Arial"\n'
-            'export FONT_SIZE=10\n'
-            'export FONT_SIZE_LARGE_OFFSET=0\n',
-            encoding="utf-8"
-        )
+# 如果 .env 不存在，自动创建（同时生成 .env.sample 模板）
+ensure_env(_config_dir())
 
 if env_path.exists():
     with open(env_path, encoding="utf-8") as f:

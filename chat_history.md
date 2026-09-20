@@ -1,5 +1,10 @@
 # Chat History
 
+## 2026-09-20 16:00:00 +08:00
+
+- 用户：两个 app 无 .env 时自动创建 sample。
+- 助手：新建 env_util.py 含内置模板与 ensure_env()；两个 app 启动时若无 .env 自动创建 .env 与 .env.sample；更新 README、chat_history。
+
 ## 2026-09-20 15:00:00 +08:00
 
 - 用户：两个 app 增加"最小化到系统托盘"，任务栏不显示。

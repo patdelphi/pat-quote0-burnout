@@ -1,4 +1,5 @@
 .env
+.env.sample
 .venv/
 __pycache__/
 *.pyc
@@ -6,3 +7,9 @@ __pycache__/
 /tmp/
 logo_region_*.png
 preview_v3.pngtest_render.png
+
+# PyInstaller 构建产物（保留本地 dist，不入库）
+/build/
+/dist/
+*.spec
+/todo.md
