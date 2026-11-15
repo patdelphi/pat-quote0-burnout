@@ -63,3 +63,57 @@
   - 新增 `rand0_app.py`（tkinter）：IP 输入+保存到 .env、bw/gray4 选择、预览、推送、可选定时自动推送、设备消息日志区。
   - `rand0_display.py` 的 `push_frame` 增加 `on_message` 回调（GUI 展示设备消息），默认行为不变。
   - README 补窗口用法；冒烟测试验证 UI 构建与渲染显示链正常。
+
+
+## 2026-11-15 16:00:00 +08:00
+
+- 用户：看一下Quote0Local，看能不能增加antigravity的额度
+- 助手：只读分析 `Quote0Local.spec`、`local_app.py`、`display.py` 与本机 `agy --help`；确认 Quote0Local 代码层可通过扩展 `display.py` 与 `local_app.py` 增加新区块，但当前卡点在于本机 `agy` CLI 缺少非交互式额度查询子命令（`agy --help` 仅含 `acp/agent/agents/changelog/help/install/mcp/mic-serve/models/plugin/remote-control/update`），说明接入前提与可选方案。
+
+
+## 2026-11-15 16:03:00 +08:00
+
+- 用户：你调研一下，走cli，api，mcp，网页，都可以
+- 助手：完成 CLI、API、MCP、网页四条路径调研。CLI 途径（`agy -p "/usage" --output-format json`）最稳妥，复用本地登录态且与 Codex 现有架构一致；API 途径可作为回退（`daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary`）；MCP 无现成标准服务端且多一层转发；网页无公开 JSON 接口且登录维护成本高。提示用户在本地终端验证 `agy -p "/usage" --output-format json` 输出结构后即可接入 Quote0Local。
+
+
+## 2026-11-15 16:06:00 +08:00
+
+- 用户：提供 `agy -p "/usage" --output-format json` 实测输出。
+- 助手：确认 JSON 结构完整包含 `Gemini Models` 与 `Claude and GPT models` 两组各自的 `5h`/`weekly` `remaining_fraction` 与 `reset_time`；说明接入方案并向用户确认展示方式（4 行完整进度条或 2 行紧凑模式）、是否同步打包 `Quote0Local.exe` 以及是否同步更新墨水屏显示。
+
+
+## 2026-11-15 16:10:00 +08:00
+
+- 用户：确认 1. 放到最上面（codex上面，标明antigravity） 2. 不用更新墨水屏 3. 先不急打包 exe。
+- 助手：在 `display.py` 新增 `_find_agy_command()`、`get_antigravity_usage()`、`build_antigravity_snapshot()` 并接入 `build_snapshot()`；在 `local_app.py` 顶部新增 `◆ ANTIGRAVITY` 区块（置于 `◆ CODEX` 上方，展示 `Gem 5h`/`Gem Wk`/`Cld 5h`/`Cld Wk` 四条进度条，状态灯更新为 `● A  ● C  ● D`，窗口默认高度调为 370）；在 `tests/test_display.py` 新增 5 项 Antigravity 单元测试；`test_display.py`（11 例）与 `test_timing_logic.py`（7 例）全部通过，AST 语法检查通过。
+
+
+## 2026-11-15 16:12:30 +08:00
+
+- 用户：另外加一个折叠功能，可以分别折叠展开antigravity、codex、DeepSeek模块
+- 助手：在 `local_app.py` 新增 `_bind_collapsible()` 与 `toggle_section()`，为 `ANTIGRAVITY`、`CODEX`、`DEEPSEEK` 三个模块拆分内容容器（`ag_body`、`codex_body`、`ds_body`），点击标题（`▼` / `▶`）可分别折叠/展开并自动调整窗口高度（返回 `"break"` 避免触发整窗拖动）；新增 `tests/test_local_app_fold.py` 2 项测试；`test_display.py`、`test_timing_logic.py`、`test_local_app_fold.py` 共 20 项测试全部通过，AST 语法检查通过。
+
+
+## 2026-11-15 16:15:30 +08:00
+
+- 用户：运行 `python local_app.py` 报错 `ModuleNotFoundError: No module named 'PIL'`。
+- 助手：修复 `tray_util.py` 中 `from PIL import Image, ImageDraw` 未放入 `try...except` 的问题，使 `PIL` 与 `pystray` 缺失时均自动降级为无托盘模式；`python -B -c "import local_app"` 导入成功，20 项单元测试通过。
+
+
+## 2026-11-15 16:17:00 +08:00
+
+- 用户：编译exe吧
+- 助手：检查当前环境（`C:\Program Files\Python313\python.exe` 与 PATH），均未安装 `PyInstaller`（且缺少 `Pillow`、`pystray`）；`dist\Quote0Local.exe` 为 2026-09-20 旧版产物。向用户确认是否安装依赖并覆盖重建 `dist\Quote0Local.exe`，或提供已有虚拟环境路径。
+
+
+## 2026-11-15 16:19:15 +08:00
+
+- 用户：确认 1（安装依赖并打包 exe）。
+- 助手：安装 `pyinstaller`、`Pillow`、`pystray`（及确认 `requests`、`websocket-client`）；全套 36 项单元测试全部通过；使用 `python -m PyInstaller Quote0Local.spec --noconfirm` 重新生成 `dist\Quote0Local.exe`（27,368,760 字节）。
+
+
+## 2026-11-15 17:58:40 +08:00
+
+- 用户：push github
+- 助手：检查 `git status`、当前分支（`main`）与远程仓库（`https://github.com/patdelphi/pat-quote0-burnout`），列出拟提交文件范围与拟执行的 commit message，等待用户确认后再执行 `git add`、`git commit` 与 `git push`。

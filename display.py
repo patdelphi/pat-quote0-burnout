@@ -308,6 +308,60 @@ def get_deepseek_balance():
         return {"ok": False, "status": "error"}
 
 
+ANTIGRAVITY_COMMAND_TIMEOUT = 20
+
+
+def _find_agy_command():
+    """查找 Antigravity CLI；ANTIGRAVITY_COMMAND 可用于指定自定义可执行文件路径。"""
+    configured = os.environ.get("ANTIGRAVITY_COMMAND", "").strip()
+    if configured:
+        return configured
+
+    for candidate in ("agy", "agy.exe", "agy.cmd"):
+        found = shutil.which(candidate)
+        if found:
+            return found
+    return None
+
+
+def get_antigravity_usage():
+    """通过 `agy -p /usage --output-format json` 获取 Antigravity 额度。"""
+    command = _find_agy_command()
+    if not command:
+        return {"ok": False, "status": "no cli", "detail": "未找到 agy CLI"}
+
+    try:
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        proc = subprocess.run(
+            [command, "-p", "/usage", "--output-format", "json"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=ANTIGRAVITY_COMMAND_TIMEOUT,
+            creationflags=creationflags,
+        )
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "status": "timeout"}
+    except Exception as e:
+        return {"ok": False, "status": "error", "detail": str(e)[:200]}
+
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or f"exit {proc.returncode}").strip()
+        return {"ok": False, "status": "error", "detail": detail[:200]}
+
+    try:
+        data = json.loads(proc.stdout)
+    except json.JSONDecodeError as e:
+        return {"ok": False, "status": "invalid json", "detail": str(e)[:200]}
+
+    if not isinstance(data, dict) or data.get("status") != "SUCCESS":
+        status = data.get("status") if isinstance(data, dict) else "invalid response"
+        return {"ok": False, "status": str(status or "error")}
+
+    return {"ok": True, "raw": data, "source": "cli"}
+
+
 # ── 快照构建 ──────────────────────────────────────────────────────────────────
 
 CURRENCY_SYMBOLS = {"USD": "$", "CNY": "¥", "EUR": "€", "GBP": "£"}
@@ -528,11 +582,96 @@ def build_deepseek_snapshot(ds: dict) -> dict:
     }
 
 
+def _match_antigravity_group(groups: list, keyword: str) -> dict:
+    """按关键字匹配 Antigravity 模型分组（忽略大小写）。"""
+    for group in groups:
+        if isinstance(group, dict) and keyword in str(group.get("name", "")).lower():
+            return group
+    return {}
+
+
+def _build_antigravity_row(key: str, label: str, bucket: dict) -> dict:
+    """将单个 Antigravity 额度窗口转换为统一展示行。"""
+    frac = bucket.get("remaining_fraction")
+    remaining_pct = None
+    used_pct = None
+    if frac is not None:
+        try:
+            remaining_pct = max(0, min(100, round(float(frac) * 100)))
+            used_pct = 100 - remaining_pct
+        except (ValueError, TypeError):
+            remaining_pct = None
+            used_pct = None
+
+    return {
+        "key": key,
+        "label": label,
+        "remaining_percent": remaining_pct,
+        "used_percent": used_pct,
+        "reset": _time_until(bucket.get("reset_time")),
+        "status": _pct_status(used_pct),
+    }
+
+
+def build_antigravity_snapshot(agy: dict) -> dict:
+    """从 `agy -p /usage --output-format json` 响应构建 Antigravity 快照。"""
+    if not agy.get("ok"):
+        return {
+            "ok": False,
+            "rows": [],
+            "status": "error",
+            "raw_status": agy.get("status", "error"),
+        }
+
+    raw = agy.get("raw", {})
+    groups = (
+        raw.get("command", {}).get("data", {}).get("groups", [])
+        if isinstance(raw, dict)
+        else []
+    )
+    if not isinstance(groups, list) or not groups:
+        return {
+            "ok": False,
+            "rows": [],
+            "status": "error",
+            "raw_status": "invalid response",
+        }
+
+    # 按固定顺序提取 Gemini 与 Claude/GPT 两组各自的 5h 与 weekly 窗口
+    specs = (
+        ("gemini", "gemini_5h", "Gem 5h", "5h"),
+        ("gemini", "gemini_wk", "Gem Wk", "weekly"),
+        ("claude", "claude_5h", "Cld 5h", "5h"),
+        ("claude", "claude_wk", "Cld Wk", "weekly"),
+    )
+    rows = []
+    for group_key, row_key, label, window_name in specs:
+        group = _match_antigravity_group(groups, group_key)
+        buckets = group.get("buckets", []) if isinstance(group, dict) else []
+        bucket = next(
+            (b for b in buckets if isinstance(b, dict) and b.get("window") == window_name),
+            {},
+        )
+        rows.append(_build_antigravity_row(row_key, label, bucket))
+
+    severity = {"hot": 3, "warn": 2, "ok": 1, "unknown": 0}
+    worst = max(rows, key=lambda r: severity.get(r["status"], 0))["status"]
+
+    return {
+        "ok": True,
+        "rows": rows,
+        "status": worst,
+        "raw_status": "",
+    }
+
+
 def build_snapshot() -> dict:
     """获取并构建完整数据快照。"""
+    antigravity = get_antigravity_usage()
     codex = get_codex_usage()
     deepseek = get_deepseek_balance()
     return {
+        "antigravity": build_antigravity_snapshot(antigravity),
         "codex": build_codex_snapshot(codex),
         "deepseek": build_deepseek_snapshot(deepseek),
         "updated_at": datetime.now().strftime("%H:%M"),

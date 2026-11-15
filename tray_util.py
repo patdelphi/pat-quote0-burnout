@@ -12,13 +12,14 @@ from __future__ import annotations
 
 import tkinter as tk
 
-from PIL import Image, ImageDraw
-
-# ---- pystray 为可选依赖：缺失或初始化失败时降级为普通最小化 ----
+# ---- PIL / pystray 为可选依赖：缺失或初始化失败时降级为普通最小化 ----
 try:
+    from PIL import Image, ImageDraw
     import pystray
     _HAS_TRAY = True
 except Exception:
+    Image = None
+    ImageDraw = None
     _HAS_TRAY = False
 
 

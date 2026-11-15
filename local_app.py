@@ -3,8 +3,9 @@
 quote0-burnout 本地弹窗 — Windows 桌面置顶显示 AI 额度数据。
 
 功能：
-  - 从 Codex（OpenAI）和 DeepSeek 获取实时用量/余额
+  - 从 Antigravity、Codex（OpenAI）和 DeepSeek 获取实时用量/余额
   - tkinter 无边框置顶窗口，深色主题，像素风格
+  - 支持分别折叠/展开 Antigravity、Codex、DeepSeek 模块
   - 每 5 分钟自动刷新，双击手动刷新
   - 支持拖动、系统托盘最小化
 
@@ -70,7 +71,7 @@ from tray_util import TrayManager
 REFRESH_INTERVAL = int(os.environ.get("REFRESH_INTERVAL", "300"))  # 秒，默认 5 分钟
 WINDOW_OPACITY   = float(os.environ.get("WINDOW_OPACITY", "0.92"))  # 不透明度
 WINDOW_WIDTH     = 504
-WINDOW_HEIGHT    = 260
+WINDOW_HEIGHT    = 390
 
 # 颜色方案（Catppuccin Mocha 风格）
 BG_COLOR      = "#1e1e2e"
@@ -151,6 +152,10 @@ class Quote0Window:
         # 字体（统一大小）
         self._setup_fonts()
 
+        # 模块折叠状态（默认全部展开）
+        self._collapsed = {"antigravity": False, "codex": False, "deepseek": False}
+        self._sections = {}
+
         # 构建 UI
         self._build_ui()
 
@@ -194,6 +199,39 @@ class Quote0Window:
         self.font_small  = (family, s)
         self.font_large  = (family, large, "bold")
 
+    def _bind_collapsible(self, key: str, title_text: str, title_label: tk.Label, body_frame: tk.Frame):
+        """注册可折叠模块，点击标题可切换展开/折叠并自适应窗口高度。"""
+        self._sections[key] = {
+            "title": title_text,
+            "label": title_label,
+            "body": body_frame,
+        }
+        title_label.config(cursor="hand2")
+        title_label.bind("<Button-1>", lambda _e, k=key: self.toggle_section(k))
+
+    def toggle_section(self, key: str) -> str:
+        """切换指定模块的折叠状态。"""
+        sec = self._sections.get(key)
+        if not sec:
+            return "break"
+
+        collapsed = not self._collapsed.get(key, False)
+        self._collapsed[key] = collapsed
+
+        prefix = "▶" if collapsed else "▼"
+        sec["label"].config(text=f"{prefix} {sec['title']}")
+        if collapsed:
+            sec["body"].pack_forget()
+        else:
+            sec["body"].pack(fill="x")
+
+        # 折叠/展开后自适应窗口高度，保持当前宽度和位置
+        self.root.update_idletasks()
+        cur_w = self.root.winfo_width() or WINDOW_WIDTH
+        req_h = max(120, self.root.winfo_reqheight())
+        self.root.geometry(f"{cur_w}x{req_h}")
+        return "break"
+
     def _build_ui(self):
         """构建窗口界面。"""
         pad = 14
@@ -206,23 +244,61 @@ class Quote0Window:
                                   bg=BG_COLOR, fg=FG_DIM)
         self.lbl_time.pack(side="left")
 
-        self.lbl_status = tk.Label(self.header, text="● C  ● D", font=self.font_small,
+        self.lbl_status = tk.Label(self.header, text="● A  ● C  ● D", font=self.font_small,
                                     bg=BG_COLOR, fg=FG_DIM)
         self.lbl_status.pack(side="right")
 
         # 分隔线
         tk.Frame(self.root, height=1, bg=DIVIDER).pack(fill="x", padx=pad, pady=2)
 
+        # ── ANTIGRAVITY 区域（置于最上方）──────────────────────────────────
+        self.ag_frame = tk.Frame(self.root, bg=BG_COLOR)
+        self.ag_frame.pack(fill="x", padx=pad, pady=(2, 0))
+
+        self.lbl_ag_title = tk.Label(self.ag_frame, text="▼ ANTIGRAVITY", font=self.font_label,
+                                      bg=BG_COLOR, fg=FG_COLOR)
+        self.lbl_ag_title.pack(anchor="w")
+
+        self.ag_body = tk.Frame(self.ag_frame, bg=BG_COLOR)
+        self.ag_body.pack(fill="x")
+
+        self.ag_rows = []
+        for idx, default_label in enumerate(("Gem 5h", "Gem Wk", "Cld 5h", "Cld Wk")):
+            row_frame = tk.Frame(self.ag_body, bg=BG_COLOR)
+            row_frame.pack(fill="x", pady=(2 if idx == 0 else 4, 0))
+
+            lbl_label = tk.Label(row_frame, text=default_label, font=self.font_data,
+                                 bg=BG_COLOR, fg=FG_COLOR, anchor="w", width=6)
+            lbl_label.pack(side="left")
+
+            canvas = tk.Canvas(row_frame, height=14, width=165, bg=BAR_BG,
+                               highlightthickness=0, bd=0)
+            canvas.pack(side="left", padx=(4, 4))
+
+            lbl_info = tk.Label(row_frame, text="--% / --", font=self.font_data,
+                                bg=BG_COLOR, fg=FG_COLOR, anchor="e")
+            lbl_info.pack(side="left")
+
+            self.ag_rows.append({"label": lbl_label, "canvas": canvas, "info": lbl_info})
+
+        self._bind_collapsible("antigravity", "ANTIGRAVITY", self.lbl_ag_title, self.ag_body)
+
+        # 分隔线
+        tk.Frame(self.root, height=1, bg=DIVIDER).pack(fill="x", padx=pad, pady=3)
+
         # ── CODEX 区域 ──────────────────────────────────────────────────────
         self.codex_frame = tk.Frame(self.root, bg=BG_COLOR)
         self.codex_frame.pack(fill="x", padx=pad, pady=(2, 0))
 
-        self.lbl_codex_title = tk.Label(self.codex_frame, text="◆ CODEX", font=self.font_label,
+        self.lbl_codex_title = tk.Label(self.codex_frame, text="▼ CODEX", font=self.font_label,
                                          bg=BG_COLOR, fg=FG_COLOR)
         self.lbl_codex_title.pack(anchor="w")
 
+        self.codex_body = tk.Frame(self.codex_frame, bg=BG_COLOR)
+        self.codex_body.pack(fill="x")
+
         # 短窗口行：标签 + 进度条 + 数据（一行）
-        self.row1_frame = tk.Frame(self.codex_frame, bg=BG_COLOR)
+        self.row1_frame = tk.Frame(self.codex_body, bg=BG_COLOR)
         self.row1_frame.pack(fill="x", pady=(2, 0))
 
         self.lbl_r1_label = tk.Label(self.row1_frame, text="5h", font=self.font_data,
@@ -238,7 +314,7 @@ class Quote0Window:
         self.lbl_r1_info.pack(side="left")
 
         # 长窗口行：标签 + 进度条 + 数据（一行）
-        self.row2_frame = tk.Frame(self.codex_frame, bg=BG_COLOR)
+        self.row2_frame = tk.Frame(self.codex_body, bg=BG_COLOR)
         self.row2_frame.pack(fill="x", pady=(4, 0))
 
         self.lbl_r2_label = tk.Label(self.row2_frame, text="Wk", font=self.font_data,
@@ -254,9 +330,11 @@ class Quote0Window:
         self.lbl_r2_info.pack(side="left")
 
         # 重置卡信息：显示可用数量和最近到期时间。
-        self.lbl_reset_credits = tk.Label(self.codex_frame, text="重置卡 --", font=self.font_small,
+        self.lbl_reset_credits = tk.Label(self.codex_body, text="重置卡 --", font=self.font_small,
                                            bg=BG_COLOR, fg=FG_DIM, anchor="w")
         self.lbl_reset_credits.pack(anchor="w", pady=(4, 0))
+
+        self._bind_collapsible("codex", "CODEX", self.lbl_codex_title, self.codex_body)
 
         # 分隔线
         tk.Frame(self.root, height=1, bg=DIVIDER).pack(fill="x", padx=pad, pady=3)
@@ -265,21 +343,26 @@ class Quote0Window:
         self.ds_frame = tk.Frame(self.root, bg=BG_COLOR)
         self.ds_frame.pack(fill="x", padx=pad, pady=(2, 8))
 
-        self.ds_row = tk.Frame(self.ds_frame, bg=BG_COLOR)
-        self.ds_row.pack(fill="x")
-
-        self.lbl_ds_title = tk.Label(self.ds_row, text="◆ DEEPSEEK", font=self.font_label,
+        self.lbl_ds_title = tk.Label(self.ds_frame, text="▼ DEEPSEEK", font=self.font_label,
                                       bg=BG_COLOR, fg=FG_COLOR)
-        self.lbl_ds_title.pack(side="left")
+        self.lbl_ds_title.pack(anchor="w")
+
+        self.ds_body = tk.Frame(self.ds_frame, bg=BG_COLOR)
+        self.ds_body.pack(fill="x")
+
+        self.ds_row = tk.Frame(self.ds_body, bg=BG_COLOR)
+        self.ds_row.pack(fill="x")
 
         self.lbl_ds_balance = tk.Label(self.ds_row, text="$--.--", font=self.font_label,
                                         bg=BG_COLOR, fg=FG_COLOR)
         self.lbl_ds_balance.pack(side="right")
 
         # 状态标签（仅 warn/hot 时显示，ok 时隐藏，放在余额下方）
-        self.lbl_ds_status = tk.Label(self.ds_frame, text="", font=self.font_data,
+        self.lbl_ds_status = tk.Label(self.ds_body, text="", font=self.font_data,
                                        bg=BG_COLOR, fg=FG_DIM)
         self.lbl_ds_status.pack(anchor="e")
+
+        self._bind_collapsible("deepseek", "DEEPSEEK", self.lbl_ds_title, self.ds_body)
 
         # 右下角 resize handle
         self._resize_handle = tk.Frame(self.root, width=12, height=12, bg=DIVIDER, cursor="size_nw_se")
@@ -352,6 +435,7 @@ class Quote0Window:
             snapshot = build_snapshot()
         except Exception as e:
             snapshot = {
+                "antigravity": {"ok": False, "rows": [], "raw_status": str(e)},
                 "codex": {"ok": False, "raw_status": str(e)},
                 "deepseek": {"ok": False, "raw_status": str(e)},
                 "updated_at": "ERR",
@@ -370,18 +454,51 @@ class Quote0Window:
         ts = snapshot.get("updated_at", "--:--")
         self.lbl_time.config(text=ts)
 
+        ag = snapshot.get("antigravity", {})
         cx = snapshot.get("codex", {})
         ds = snapshot.get("deepseek", {})
 
-        # 状态灯
+        # 状态灯（按严重程度选取整体颜色）
+        ag_st = ag.get("status", "unknown") if ag.get("ok") else "error"
         cx_st = cx.get("status", "unknown") if cx.get("ok") else "error"
         ds_st = ds.get("status", "unknown") if ds.get("ok") else "error"
-        cx_dot = {"ok": "●", "warn": "◐", "hot": "●", "unknown": "○", "error": "✕"}.get(cx_st, "○")
-        ds_dot = {"ok": "●", "warn": "◐", "hot": "●", "unknown": "○", "error": "✕"}.get(ds_st, "○")
-        cx_color = status_color(cx_st)
-        ds_color = status_color(ds_st)
-        status_text = f"{cx_dot} C  {ds_dot} D"
-        self.lbl_status.config(text=status_text, fg=cx_color if cx_st != "ok" else ds_color)
+        dot_map = {"ok": "●", "warn": "◐", "hot": "●", "unknown": "○", "error": "✕"}
+        ag_dot = dot_map.get(ag_st, "○")
+        cx_dot = dot_map.get(cx_st, "○")
+        ds_dot = dot_map.get(ds_st, "○")
+        severity = {"error": 4, "hot": 3, "warn": 2, "unknown": 1, "ok": 0}
+        worst_st = max((ag_st, cx_st, ds_st), key=lambda s: severity.get(s, 0))
+        status_text = f"{ag_dot} A  {cx_dot} C  {ds_dot} D"
+        self.lbl_status.config(text=status_text, fg=status_color(worst_st))
+
+        # Antigravity 四行（Gem 5h / Gem Wk / Cld 5h / Cld Wk）
+        if ag.get("ok"):
+            ag_data_rows = ag.get("rows", [])
+            for idx, widget in enumerate(self.ag_rows):
+                if idx < len(ag_data_rows):
+                    row = ag_data_rows[idx]
+                    rem = row.get("remaining_percent")
+                    reset_str = row.get("reset", "?")
+                    row_st = row.get("status", "unknown")
+                    rem_val = rem if rem is not None else 0
+                    rem_text = f"{rem}% / {reset_str}" if rem is not None else f"--% / {reset_str}"
+                    widget["label"].config(text=row.get("label", ""))
+                    widget["info"].config(text=rem_text, fg=status_color(row_st))
+                    self._draw_bar(widget["canvas"], rem_val, row_st)
+                else:
+                    widget["label"].config(text="")
+                    widget["info"].config(text="", fg=FG_DIM)
+                    self._draw_bar(widget["canvas"], 0, "unknown")
+        else:
+            err = ag.get("raw_status", "error")
+            for idx, widget in enumerate(self.ag_rows):
+                if idx == 0:
+                    widget["label"].config(text="AGY")
+                    widget["info"].config(text=err, fg=FG_HOT)
+                else:
+                    widget["label"].config(text="")
+                    widget["info"].config(text="", fg=FG_DIM)
+                self._draw_bar(widget["canvas"], 0, "error")
 
         # Codex 行 1（一行：标签 + 进度条 + %/重置时间）
         if cx.get("ok"):
