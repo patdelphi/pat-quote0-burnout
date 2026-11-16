@@ -144,6 +144,28 @@ def _read_app_server_response(messages, request_id: int, timeout: float):
         return message["result"]
 
 
+def _hidden_subprocess_kwargs(use_no_window: bool = True) -> dict:
+    """Windows 下隐藏控制台子进程窗口（供 Popen/run 共用）。
+
+    注意：部分 CLI（如 agy）内部会再拉起控制台子进程；若父进程使用
+    CREATE_NO_WINDOW 导致无控制台可继承，孙进程可能弹出可见黑框。
+    此时设 use_no_window=False，改由 STARTUPINFO(SW_HIDE) 创建隐藏控制台供继承。
+    """
+    kwargs = {}
+    if use_no_window:
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        if creationflags:
+            kwargs["creationflags"] = creationflags
+    startupinfo_cls = getattr(subprocess, "STARTUPINFO", None)
+    startf = getattr(subprocess, "STARTF_USESHOWWINDOW", 0)
+    if startupinfo_cls and startf:
+        si = startupinfo_cls()
+        si.dwFlags |= startf
+        si.wShowWindow = getattr(subprocess, "SW_HIDE", 0)
+        kwargs["startupinfo"] = si
+    return kwargs
+
+
 def _get_codex_usage_app_server():
     """通过 Codex CLI 的受支持 app-server 协议获取额度。"""
     command = _find_codex_command()
@@ -153,7 +175,6 @@ def _get_codex_usage_app_server():
     process = None
     messages = queue.Queue()
     try:
-        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         process = subprocess.Popen(
             [command, "app-server", "--stdio"],
             stdin=subprocess.PIPE,
@@ -163,7 +184,7 @@ def _get_codex_usage_app_server():
             encoding="utf-8",
             errors="replace",
             bufsize=1,
-            creationflags=creationflags,
+            **_hidden_subprocess_kwargs(),
         )
 
         def read_messages():
@@ -331,15 +352,15 @@ def get_antigravity_usage():
         return {"ok": False, "status": "no cli", "detail": "未找到 agy CLI"}
 
     try:
-        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         proc = subprocess.run(
             [command, "-p", "/usage", "--output-format", "json"],
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             encoding="utf-8",
             errors="replace",
             timeout=ANTIGRAVITY_COMMAND_TIMEOUT,
-            creationflags=creationflags,
+            **_hidden_subprocess_kwargs(use_no_window=False),
         )
     except subprocess.TimeoutExpired:
         return {"ok": False, "status": "timeout"}

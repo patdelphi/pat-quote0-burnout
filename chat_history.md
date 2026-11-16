@@ -117,3 +117,27 @@
 
 - 用户：push github
 - 助手：检查 `git status`、当前分支（`main`）与远程仓库（`https://github.com/patdelphi/pat-quote0-burnout`），列出拟提交文件范围与拟执行的 commit message，等待用户确认后再执行 `git add`、`git commit` 与 `git push`。
+
+
+## 2026-11-16 13:26:20 +08:00
+
+- 用户：每次取agy余额都有一个cmd窗口快速打开关闭，能不能静默这个窗口
+- 助手：检查确认 `agy.exe` 位于 `C:\Users\patde\AppData\Local\agy\bin\agy.exe`；在 `display.py` 抽取 `_hidden_subprocess_kwargs()`，为 Codex 与 Antigravity 子进程同时传入 `CREATE_NO_WINDOW` 与 `STARTUPINFO`（`STARTF_USESHOWWINDOW` + `SW_HIDE`）；在 `tests/test_display.py` 新增 `test_get_antigravity_usage_hides_console_window`；全套 37 项单元测试全部通过。提醒用户如需在 `dist\Quote0Local.exe` 生效，需重新打包 exe（若正在运行需先退出旧进程），并告知若仍由 `agy.exe` 内部子进程弹窗的边界情况。
+
+
+## 2026-11-16 13:35:30 +08:00
+
+- 用户：重新编译
+- 助手：执行 `python -m PyInstaller Quote0Local.spec --noconfirm`，重新生成 `dist\Quote0Local.exe`（27,371,750 字节，2026-11-16 13:35:19）。
+
+
+## 2026-11-16 16:28:20 +08:00
+
+- 用户：不行，还是会有窗口闪现
+- 助手：定位到 `CREATE_NO_WINDOW` 会导致 `agy.exe` 无控制台可继承、其内部子进程新建可见控制台窗口；在 `display.py` 的 `_hidden_subprocess_kwargs(use_no_window=True)` 中对 `agy` 改传 `use_no_window=False` + `stdin=subprocess.DEVNULL` + `STARTUPINFO(SW_HIDE)`，更新 `tests/test_display.py` 并通过全部 37 项单元测试，重新打包生成 `dist\Quote0Local.exe`（27,371,251 字节，2026-11-16 16:28:11）。
+
+
+## 2026-11-16 16:50:15 +08:00
+
+- 用户：push一下
+- 助手：检查 `git status`（变更文件为 `display.py`、`tests/test_display.py`、`chat_history.md`），列出拟提交范围、commit message 与远端分支 `main -> origin/main`，等待用户确认。

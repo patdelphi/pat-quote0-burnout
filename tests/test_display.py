@@ -237,6 +237,24 @@ class AntigravitySnapshotTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "no cli")
 
+    @patch("display.subprocess.run")
+    @patch("display._find_agy_command", return_value="agy.exe")
+    def test_get_antigravity_usage_hides_console_window(self, _mock_find, mock_run):
+        mock_run.return_value.returncode = 0
+        mock_run.return_value.stdout = '{"status":"SUCCESS","command":{"data":{"groups":[]}}}'
+
+        result = display.get_antigravity_usage()
+
+        self.assertTrue(result["ok"])
+        kwargs = mock_run.call_args.kwargs
+        self.assertEqual(kwargs.get("stdin"), display.subprocess.DEVNULL)
+        self.assertNotIn("creationflags", kwargs)
+        if hasattr(display.subprocess, "STARTUPINFO") and hasattr(display.subprocess, "STARTF_USESHOWWINDOW"):
+            si = kwargs.get("startupinfo")
+            self.assertIsNotNone(si)
+            self.assertTrue(si.dwFlags & display.subprocess.STARTF_USESHOWWINDOW)
+            self.assertEqual(si.wShowWindow, getattr(display.subprocess, "SW_HIDE", 0))
+
     @patch("display.get_deepseek_balance", return_value={"ok": True, "amount": 12.34, "currency": "USD", "available": True})
     @patch("display.get_codex_usage", return_value={"ok": False, "status": "no auth"})
     @patch("display.get_antigravity_usage")
