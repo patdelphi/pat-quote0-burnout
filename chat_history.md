@@ -141,3 +141,21 @@
 
 - 用户：push一下
 - 助手：检查 `git status`（变更文件为 `display.py`、`tests/test_display.py`、`chat_history.md`），列出拟提交范围、commit message 与远端分支 `main -> origin/main`，等待用户确认。
+
+
+## 2026-11-16 17:14:00 +08:00
+
+- 用户：还是会闪
+- 助手：分析确认无论是 `CREATE_NO_WINDOW` 还是 `STARTUPINFO(SW_HIDE)`，只要拉起 `agy.exe` 子进程，其内部子进程或 Windows 11 默认终端仍会触发短暂控制台闪窗。提出彻底根治方案（零子进程，改用 Python 直连 `daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary`），并向用户确认 OAuth token 来源方式或临时缓解方案。
+
+
+## 2026-11-16 17:19:10 +08:00
+
+- 用户：确认 1（直接复用本机登录态，走 HTTP 接口彻底解决闪窗）。
+- 助手：排查定位到本机 Antigravity 凭据保存在 Windows 凭据管理器 `gemini:antigravity`（JSON 内含 `token.access_token`）；在 `display.py` 新增 `_load_antigravity_token()` 与 `_get_antigravity_usage_http()`（直连 `https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary`），`get_antigravity_usage()` 改为 HTTP 优先、CLI 回退，`build_antigravity_snapshot()` 兼容 HTTP camelCase 字段；在 `tests/test_display.py` 新增 3 项测试；全套 40 项单元测试通过，端到端实测 `source: http` 成功获取 4 行额度数据；启动 `PyInstaller` 重新打包 `dist\Quote0Local.exe`。
+
+
+## 2026-11-16 17:38:35 +08:00
+
+- 用户：push
+- 助手：检查 `git status`（变更文件为 `display.py`、`tests/test_display.py`、`chat_history.md`），列出拟提交范围、commit message 与远端分支 `main -> origin/main`，等待用户确认。

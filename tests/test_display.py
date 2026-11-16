@@ -233,7 +233,7 @@ class AntigravitySnapshotTests(unittest.TestCase):
 
     @patch("display._find_agy_command", return_value=None)
     def test_get_antigravity_usage_missing_cli(self, _mock_find):
-        result = display.get_antigravity_usage()
+        result = display._get_antigravity_usage_cli()
         self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "no cli")
 
@@ -243,7 +243,7 @@ class AntigravitySnapshotTests(unittest.TestCase):
         mock_run.return_value.returncode = 0
         mock_run.return_value.stdout = '{"status":"SUCCESS","command":{"data":{"groups":[]}}}'
 
-        result = display.get_antigravity_usage()
+        result = display._get_antigravity_usage_cli()
 
         self.assertTrue(result["ok"])
         kwargs = mock_run.call_args.kwargs
@@ -254,6 +254,67 @@ class AntigravitySnapshotTests(unittest.TestCase):
             self.assertIsNotNone(si)
             self.assertTrue(si.dwFlags & display.subprocess.STARTF_USESHOWWINDOW)
             self.assertEqual(si.wShowWindow, getattr(display.subprocess, "SW_HIDE", 0))
+
+    def test_parses_antigravity_http_camel_case(self):
+        http_raw = {
+            "groups": [
+                {
+                    "displayName": "Gemini Models",
+                    "buckets": [
+                        {
+                            "bucketId": "gemini-weekly",
+                            "window": "weekly",
+                            "remainingFraction": 0.986,
+                            "resetTime": "2026-11-22T03:46:59Z",
+                        },
+                        {
+                            "bucketId": "gemini-5h",
+                            "window": "5h",
+                            "remainingFraction": 0.987,
+                            "resetTime": "2026-11-16T13:07:10Z",
+                        },
+                    ],
+                },
+                {
+                    "displayName": "Claude and GPT models",
+                    "buckets": [
+                        {
+                            "bucketId": "3p-weekly",
+                            "window": "weekly",
+                            "remainingFraction": 0.95,
+                            "resetTime": "2026-11-22T07:47:28Z",
+                        },
+                        {
+                            "bucketId": "3p-5h",
+                            "window": "5h",
+                            "remainingFraction": 0.75,
+                            "resetTime": "2026-11-16T14:00:00Z",
+                        },
+                    ],
+                },
+            ]
+        }
+        result = display.build_antigravity_snapshot({"ok": True, "raw": http_raw})
+        self.assertTrue(result["ok"])
+        self.assertEqual([r["remaining_percent"] for r in result["rows"]], [99, 99, 75, 95])
+        self.assertEqual(result["status"], "ok")
+
+    @patch("display._get_antigravity_usage_cli")
+    @patch("display._get_antigravity_usage_http")
+    def test_prefers_antigravity_http_over_cli(self, mock_http, mock_cli):
+        mock_http.return_value = {"groups": []}
+        result = display.get_antigravity_usage()
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["source"], "http")
+        mock_cli.assert_not_called()
+
+    @patch("display._get_antigravity_usage_cli")
+    @patch("display._get_antigravity_usage_http", side_effect=RuntimeError("no token"))
+    def test_antigravity_http_falls_back_to_cli(self, _mock_http, mock_cli):
+        mock_cli.return_value = {"ok": True, "raw": {"groups": []}, "source": "cli"}
+        result = display.get_antigravity_usage()
+        self.assertTrue(result["ok"])
+        mock_cli.assert_called_once()
 
     @patch("display.get_deepseek_balance", return_value={"ok": True, "amount": 12.34, "currency": "USD", "available": True})
     @patch("display.get_codex_usage", return_value={"ok": False, "status": "no auth"})

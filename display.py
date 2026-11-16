@@ -330,6 +330,85 @@ def get_deepseek_balance():
 
 
 ANTIGRAVITY_COMMAND_TIMEOUT = 20
+ANTIGRAVITY_QUOTA_URL = "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
+ANTIGRAVITY_USER_AGENT = "antigravity/hub/2.24.0 (aidev_client; os_type=windows; arch=amd64)"
+ANTIGRAVITY_CRED_TARGET = "gemini:antigravity"
+
+
+def _load_antigravity_token() -> str:
+    """读取 Antigravity OAuth access_token：优先环境变量，其次 Windows 凭据管理器。"""
+    env_token = os.environ.get("ANTIGRAVITY_ACCESS_TOKEN", "").strip()
+    if env_token:
+        return env_token
+
+    if os.name != "nt":
+        raise FileNotFoundError("非 Windows 环境未设置 ANTIGRAVITY_ACCESS_TOKEN")
+
+    import ctypes
+    from ctypes import wintypes
+
+    class _CREDENTIAL(ctypes.Structure):
+        _fields_ = [
+            ("Flags", wintypes.DWORD),
+            ("Type", wintypes.DWORD),
+            ("TargetName", wintypes.LPWSTR),
+            ("Comment", wintypes.LPWSTR),
+            ("LastWritten", wintypes.FILETIME),
+            ("CredentialBlobSize", wintypes.DWORD),
+            ("CredentialBlob", ctypes.POINTER(ctypes.c_byte)),
+            ("Persist", wintypes.DWORD),
+            ("AttributeCount", wintypes.DWORD),
+            ("Attributes", ctypes.c_void_p),
+            ("TargetAlias", wintypes.LPWSTR),
+            ("UserName", wintypes.LPWSTR),
+        ]
+
+    advapi32 = ctypes.windll.advapi32
+    advapi32.CredReadW.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.POINTER(ctypes.POINTER(_CREDENTIAL)),
+    ]
+    advapi32.CredReadW.restype = wintypes.BOOL
+    advapi32.CredFree.argtypes = [ctypes.c_void_p]
+
+    cred_ptr = ctypes.POINTER(_CREDENTIAL)()
+    if not advapi32.CredReadW(ANTIGRAVITY_CRED_TARGET, 1, 0, ctypes.byref(cred_ptr)):
+        raise FileNotFoundError(f"未找到 Windows 凭据 {ANTIGRAVITY_CRED_TARGET}")
+
+    try:
+        cred = cred_ptr.contents
+        blob = bytes((cred.CredentialBlob[i] & 0xFF) for i in range(cred.CredentialBlobSize))
+    finally:
+        advapi32.CredFree(cred_ptr)
+
+    data = json.loads(blob.decode("utf-8"))
+    tok = data.get("token") if isinstance(data, dict) else None
+    access_token = tok.get("access_token") if isinstance(tok, dict) else tok
+    if not access_token:
+        raise ValueError("Antigravity 凭据缺少 access_token")
+    return str(access_token)
+
+
+def _get_antigravity_usage_http() -> dict:
+    """直接调用 CloudCode HTTP 接口获取 Antigravity 额度（无子进程闪窗）。"""
+    token = _load_antigravity_token()
+    r = requests.post(
+        ANTIGRAVITY_QUOTA_URL,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "User-Agent": ANTIGRAVITY_USER_AGENT,
+        },
+        json={},
+        timeout=ANTIGRAVITY_COMMAND_TIMEOUT,
+    )
+    r.raise_for_status()
+    data = r.json()
+    if not isinstance(data, dict) or not isinstance(data.get("groups"), list):
+        raise ValueError("Antigravity HTTP 响应缺少 groups")
+    return data
 
 
 def _find_agy_command():
@@ -345,8 +424,8 @@ def _find_agy_command():
     return None
 
 
-def get_antigravity_usage():
-    """通过 `agy -p /usage --output-format json` 获取 Antigravity 额度。"""
+def _get_antigravity_usage_cli():
+    """通过 `agy -p /usage --output-format json` 获取 Antigravity 额度（回退方式）。"""
     command = _find_agy_command()
     if not command:
         return {"ok": False, "status": "no cli", "detail": "未找到 agy CLI"}
@@ -381,6 +460,18 @@ def get_antigravity_usage():
         return {"ok": False, "status": str(status or "error")}
 
     return {"ok": True, "raw": data, "source": "cli"}
+
+
+def get_antigravity_usage():
+    """获取 Antigravity 额度：优先直连 HTTP 接口，失败时回退 CLI。"""
+    try:
+        return {"ok": True, "raw": _get_antigravity_usage_http(), "source": "http"}
+    except Exception as http_err:
+        cli_res = _get_antigravity_usage_cli()
+        if cli_res.get("ok"):
+            return cli_res
+        cli_res.setdefault("http_detail", str(http_err)[:200])
+        return cli_res
 
 
 # ── 快照构建 ──────────────────────────────────────────────────────────────────
@@ -604,9 +695,12 @@ def build_deepseek_snapshot(ds: dict) -> dict:
 
 
 def _match_antigravity_group(groups: list, keyword: str) -> dict:
-    """按关键字匹配 Antigravity 模型分组（忽略大小写）。"""
+    """按关键字匹配 Antigravity 模型分组（兼容 CLI name 与 HTTP displayName）。"""
     for group in groups:
-        if isinstance(group, dict) and keyword in str(group.get("name", "")).lower():
+        if not isinstance(group, dict):
+            continue
+        title = group.get("name") or group.get("displayName") or ""
+        if keyword in str(title).lower():
             return group
     return {}
 
@@ -614,6 +708,8 @@ def _match_antigravity_group(groups: list, keyword: str) -> dict:
 def _build_antigravity_row(key: str, label: str, bucket: dict) -> dict:
     """将单个 Antigravity 额度窗口转换为统一展示行。"""
     frac = bucket.get("remaining_fraction")
+    if frac is None:
+        frac = bucket.get("remainingFraction")
     remaining_pct = None
     used_pct = None
     if frac is not None:
@@ -624,18 +720,19 @@ def _build_antigravity_row(key: str, label: str, bucket: dict) -> dict:
             remaining_pct = None
             used_pct = None
 
+    reset_val = bucket.get("reset_time") or bucket.get("resetTime")
     return {
         "key": key,
         "label": label,
         "remaining_percent": remaining_pct,
         "used_percent": used_pct,
-        "reset": _time_until(bucket.get("reset_time")),
+        "reset": _time_until(reset_val),
         "status": _pct_status(used_pct),
     }
 
 
 def build_antigravity_snapshot(agy: dict) -> dict:
-    """从 `agy -p /usage --output-format json` 响应构建 Antigravity 快照。"""
+    """兼容 HTTP 与 CLI 响应，构建 Antigravity 快照。"""
     if not agy.get("ok"):
         return {
             "ok": False,
@@ -645,11 +742,9 @@ def build_antigravity_snapshot(agy: dict) -> dict:
         }
 
     raw = agy.get("raw", {})
-    groups = (
-        raw.get("command", {}).get("data", {}).get("groups", [])
-        if isinstance(raw, dict)
-        else []
-    )
+    groups = []
+    if isinstance(raw, dict):
+        groups = raw.get("groups") or raw.get("command", {}).get("data", {}).get("groups", [])
     if not isinstance(groups, list) or not groups:
         return {
             "ok": False,
