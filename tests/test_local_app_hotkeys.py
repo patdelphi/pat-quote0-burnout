@@ -45,7 +45,7 @@ class LocalAppHotkeyTests(unittest.TestCase):
     def test_shortcut_hint_is_at_bottom_and_scales_with_fonts(self):
         hint = self.window.lbl_shortcuts
         self.assertTrue(hint.winfo_ismapped())
-        self.assertEqual(hint.cget("text"), "F5 刷新  +- 字号  /* 透明度")
+        self.assertEqual(hint.cget("text"), "F5 刷新  +- 字号  /* 透明度  1/2 模板")
         self.assertGreater(hint.winfo_rooty(), self.window.ds_frame.winfo_rooty())
         before = self.window.font_hint.cget("size")
         self.window._change_font_size(10)

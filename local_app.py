@@ -59,11 +59,12 @@ if env_path.exists():
             os.environ.setdefault(key, val)
 
 import ctypes
+import math
 import threading
 import tkinter as tk
 from tkinter import font as tkfont
 
-from display import build_snapshot, format_reset_credits
+from display import build_snapshot
 from tray_util import TrayManager
 
 # ── 配置 ──────────────────────────────────────────────────────────────────────
@@ -101,6 +102,26 @@ def status_color(status: str) -> str:
 def bar_color(status: str) -> str:
     """根据状态返回进度条填充色。"""
     return {"ok": BAR_FILL_OK, "warn": BAR_FILL_WARN, "hot": BAR_FILL_HOT}.get(status, FG_DIM)
+
+
+def format_reset_credit_details(reset_credits):
+    """在一行显示到期时间，缺失的明细单独标注。"""
+    if not isinstance(reset_credits, dict) or reset_credits.get("available_count") is None:
+        return "重置卡 --"
+    try:
+        count = max(0, int(reset_credits["available_count"]))
+    except (TypeError, ValueError, OverflowError):
+        return "重置卡 --"
+    lines = [f"重置卡 {count}张"]
+    if count:
+        cards = reset_credits.get("credits")
+        cards = [card for card in cards if isinstance(card, dict)] if isinstance(cards, list) else []
+        dates = [str(card.get("expires_at") or "--") for card in cards]
+        if dates:
+            lines.append("到期 " + "  ".join(dates))
+        if count > len(cards):
+            lines.append(f"另有 {count - len(cards)} 张无详情")
+    return "\n".join(lines)
 
 
 # ── 主窗口类 ──────────────────────────────────────────────────────────────────
@@ -150,11 +171,17 @@ class Quote0Window:
             self.root.bind(key, lambda _event: self._change_opacity(-0.05))
         for key in ("<asterisk>", "<KP_Multiply>"):
             self.root.bind(key, lambda _event: self._change_opacity(0.05))
+        for key in ("<KeyPress-1>", "<KP_1>"):
+            self.root.bind(key, lambda _event: self._set_template("bar"))
+        for key in ("<KeyPress-2>", "<KP_2>"):
+            self.root.bind(key, lambda _event: self._set_template("ring"))
 
         # 右键菜单
         self._menu = tk.Menu(self.root, tearoff=0, bg=BG_COLOR, fg=FG_COLOR,
                              activebackground=DIVIDER, activeforeground=FG_COLOR)
         self._menu.add_command(label="刷新", command=self.refresh)
+        self._menu.add_command(label="进度条模板 (1)", command=lambda: self._set_template("bar"))
+        self._menu.add_command(label="圆环模板 (2)", command=lambda: self._set_template("ring"))
         self._menu.add_command(label="最小化到托盘", command=self.tray.to_tray)
         self._menu.add_command(label="退出", command=self.quit)
         self.root.bind("<Button-3>", self._show_menu)
@@ -165,9 +192,12 @@ class Quote0Window:
         # 模块折叠状态（默认全部展开）
         self._collapsed = {"antigravity": False, "codex": False, "deepseek": False}
         self._sections = {}
+        self._template = "bar"
+        self._last_snapshot = None
 
         # 构建 UI
         self._build_ui()
+        self._update_rings({})
         self._fit_window()
         self.root.after_idle(self.root.focus_force)
 
@@ -232,6 +262,7 @@ class Quote0Window:
             font.configure(size=size)
         self.font_hint.configure(size=max(5, int(size * 0.7)))
         self.font_large.configure(size=max(1, size + self.FONT_SIZE_LARGE_OFFSET))
+        self._update_rings(self._last_snapshot or {})
         self._fit_window()
         return "break"
 
@@ -240,6 +271,29 @@ class Quote0Window:
         self._opacity = round(max(0.2, min(1.0, self._opacity + delta)), 2)
         self._set_window_opacity(self._opacity)
         return "break"
+
+    def _set_template(self, template):
+        """切换布局并复用已有数据，不改变折叠状态和窗口位置。"""
+        if template not in ("bar", "ring") or template == self._template:
+            return "break"
+        self._template = template
+        if template == "ring":
+            self.ag_bars.pack_forget()
+            self.codex_bars.pack_forget()
+            self.ag_rings.pack(fill="x")
+            self.codex_rings.pack(fill="x", before=self.lbl_reset_credits)
+        else:
+            self.ag_rings.pack_forget()
+            self.codex_rings.pack_forget()
+            self.ag_bars.pack(fill="x")
+            self.codex_bars.pack(fill="x", before=self.lbl_reset_credits)
+        self._fit_window()
+        return "break"
+
+    def _on_template_arrow(self, template):
+        """点击标题栏箭头后保留键盘焦点。"""
+        self.root.focus_force()
+        return self._set_template(template)
 
     def _bind_collapsible(self, key: str, title_text: str, title_label: tk.Label, body_frame: tk.Frame):
         """注册可折叠模块，点击标题可切换展开/折叠并自适应窗口高度。"""
@@ -274,6 +328,76 @@ class Quote0Window:
         self.root.geometry(f"{cur_w}x{req_h}")
         return "break"
 
+    def _build_ring_group(self, parent, titles):
+        """创建两列圆环及标题、重置时间控件。"""
+        group = tk.Frame(parent, bg=BG_COLOR)
+        error = tk.Label(group, text="", font=self.font_small, bg=BG_COLOR, fg=FG_HOT, anchor="w")
+        grid = tk.Frame(group, bg=BG_COLOR)
+        grid.pack(fill="x")
+        items = []
+        for index, title in enumerate(titles):
+            cell = tk.Frame(grid, bg=BG_COLOR)
+            cell.grid(row=index // 2, column=index % 2, padx=8, pady=3, sticky="n")
+            grid.grid_columnconfigure(index % 2, weight=1)
+            canvas = tk.Canvas(cell, bg=BG_COLOR, highlightthickness=0, bd=0)
+            canvas.pack()
+            label = tk.Label(cell, text=title, font=self.font_label, bg=BG_COLOR, fg=FG_COLOR)
+            label.pack()
+            reset = tk.Label(cell, text="--", font=self.font_small, bg=BG_COLOR, fg=FG_DIM)
+            reset.pack()
+            items.append({"canvas": canvas, "label": label, "reset": reset, "title": title})
+        return group, items, error
+
+    def _draw_ring(self, canvas, percent, status):
+        """按剩余百分比绘制圆环；缺失数据用 --% 表示。"""
+        valid = isinstance(percent, (int, float)) and math.isfinite(percent)
+        value = max(0, min(100, percent)) if valid else None
+        size = max(80, self.font_label.measure("100%") + 30, self.font_data.metrics("linespace") * 3)
+        width = max(6, size // 12)
+        inset = width // 2 + 3
+        box = (inset, inset, size - inset, size - inset)
+        canvas.config(width=size, height=size)
+        canvas.delete("all")
+        canvas.create_oval(*box, outline=BAR_BG, width=width)
+        if value == 100:
+            canvas.create_oval(*box, outline=bar_color(status), width=width, tags="arc")
+        elif value is not None and value > 0:
+            canvas.create_arc(*box, start=90, extent=-3.6 * value, style="arc",
+                              outline=bar_color(status), width=width, tags="arc")
+        text = f"{value:g}%" if value is not None else "--%"
+        canvas.create_text(size // 2, size // 2, text=text, font=self.font_label,
+                           fill=FG_COLOR, tags="percent")
+
+    def _update_rings(self, snapshot):
+        """将现有快照映射到圆环，不请求额外数据。"""
+        ag = snapshot.get("antigravity", {})
+        rows = ag.get("rows", []) if ag.get("ok") else []
+        ag_error = str(ag.get("raw_status") or "error") if ag and not ag.get("ok") else ""
+        self._set_ring_error(self.lbl_ag_ring_error, ag_error)
+        for index, item in enumerate(self.ag_ring_items):
+            row = rows[index] if index < len(rows) else {}
+            item["label"].config(text=row.get("label") or item["title"])
+            item["reset"].config(text=str(row.get("reset") or "--"))
+            self._draw_ring(item["canvas"], row.get("remaining_percent"), row.get("status", "unknown"))
+
+        cx = snapshot.get("codex", {})
+        cx_error = str(cx.get("raw_status") or "error") if cx and not cx.get("ok") else ""
+        self._set_ring_error(self.lbl_codex_ring_error, cx_error)
+        for item, prefix in zip(self.codex_ring_items, ("short", "long")):
+            used = cx.get(f"{prefix}_used_percent") if cx.get("ok") else None
+            remaining = 100 - used if isinstance(used, (int, float)) else None
+            item["label"].config(text=cx.get(f"{prefix}_label") or item["title"])
+            item["reset"].config(text=str(cx.get(f"{prefix}_reset") or "--") if cx.get("ok") else "--")
+            self._draw_ring(item["canvas"], remaining, cx.get("status", "unknown"))
+
+    def _set_ring_error(self, label, text):
+        """仅在出错时占用错误提示行。"""
+        label.config(text=text)
+        if text:
+            label.pack(fill="x", before=label.master.winfo_children()[1])
+        else:
+            label.pack_forget()
+
     def _build_ui(self):
         """构建窗口界面。"""
         pad = 14
@@ -285,6 +409,15 @@ class Quote0Window:
         self.lbl_time = tk.Label(self.header, text="--:--", font=self.font_small,
                                   bg=BG_COLOR, fg=FG_COLOR)
         self.lbl_time.pack(side="left")
+
+        self.lbl_prev_template = tk.Label(self.header, text="‹", font=self.font_label,
+                                          bg=BG_COLOR, fg=FG_COLOR, cursor="hand2")
+        self.lbl_prev_template.pack(side="left", padx=(8, 0))
+        self.lbl_prev_template.bind("<Button-1>", lambda _event: self._on_template_arrow("bar"))
+        self.lbl_next_template = tk.Label(self.header, text="›", font=self.font_label,
+                                          bg=BG_COLOR, fg=FG_COLOR, cursor="hand2")
+        self.lbl_next_template.pack(side="left")
+        self.lbl_next_template.bind("<Button-1>", lambda _event: self._on_template_arrow("ring"))
 
         self.lbl_status = tk.Label(self.header, text="● A  ● C  ● D", font=self.font_small,
                                     bg=BG_COLOR, fg=FG_DIM)
@@ -304,9 +437,12 @@ class Quote0Window:
         self.ag_body = tk.Frame(self.ag_frame, bg=BG_COLOR)
         self.ag_body.pack(fill="x")
 
+        self.ag_bars = tk.Frame(self.ag_body, bg=BG_COLOR)
+        self.ag_bars.pack(fill="x")
+
         self.ag_rows = []
         for idx, default_label in enumerate(("Gem 5h", "Gem Wk", "Cld 5h", "Cld Wk")):
-            row_frame = tk.Frame(self.ag_body, bg=BG_COLOR)
+            row_frame = tk.Frame(self.ag_bars, bg=BG_COLOR)
             row_frame.pack(fill="x", pady=(2 if idx == 0 else 4, 0))
 
             lbl_label = tk.Label(row_frame, text=default_label, font=self.font_data,
@@ -322,6 +458,9 @@ class Quote0Window:
             lbl_info.pack(side="left")
 
             self.ag_rows.append({"label": lbl_label, "canvas": canvas, "info": lbl_info})
+
+        self.ag_rings, self.ag_ring_items, self.lbl_ag_ring_error = self._build_ring_group(
+            self.ag_body, ("Gem 5h", "Gem Wk", "Cld 5h", "Cld Wk"))
 
         self._bind_collapsible("antigravity", "ANTIGRAVITY", self.lbl_ag_title, self.ag_body)
 
@@ -339,8 +478,11 @@ class Quote0Window:
         self.codex_body = tk.Frame(self.codex_frame, bg=BG_COLOR)
         self.codex_body.pack(fill="x")
 
+        self.codex_bars = tk.Frame(self.codex_body, bg=BG_COLOR)
+        self.codex_bars.pack(fill="x")
+
         # 短窗口行：标签 + 进度条 + 数据（一行）
-        self.row1_frame = tk.Frame(self.codex_body, bg=BG_COLOR)
+        self.row1_frame = tk.Frame(self.codex_bars, bg=BG_COLOR)
         self.row1_frame.pack(fill="x", pady=(2, 0))
 
         self.lbl_r1_label = tk.Label(self.row1_frame, text="5h", font=self.font_data,
@@ -356,7 +498,7 @@ class Quote0Window:
         self.lbl_r1_info.pack(side="left")
 
         # 长窗口行：标签 + 进度条 + 数据（一行）
-        self.row2_frame = tk.Frame(self.codex_body, bg=BG_COLOR)
+        self.row2_frame = tk.Frame(self.codex_bars, bg=BG_COLOR)
         self.row2_frame.pack(fill="x", pady=(4, 0))
 
         self.lbl_r2_label = tk.Label(self.row2_frame, text="Wk", font=self.font_data,
@@ -371,10 +513,15 @@ class Quote0Window:
                                      bg=BG_COLOR, fg=FG_COLOR, anchor="e")
         self.lbl_r2_info.pack(side="left")
 
-        # 重置卡信息：显示可用数量和最近到期时间。
+        # 重置卡信息：在一行显示所有可用到期时间。
         self.lbl_reset_credits = tk.Label(self.codex_body, text="重置卡 --", font=self.font_small,
-                                           bg=BG_COLOR, fg=FG_COLOR, anchor="w")
+                                           bg=BG_COLOR, fg=FG_COLOR, anchor="w", justify="left")
         self.lbl_reset_credits.pack(anchor="w", pady=(4, 0))
+        self.lbl_reset_expiry = tk.Label(self.codex_body, text="", font=self.font_hint,
+                                          bg=BG_COLOR, fg=FG_COLOR, anchor="w", justify="left")
+
+        self.codex_rings, self.codex_ring_items, self.lbl_codex_ring_error = self._build_ring_group(
+            self.codex_body, ("5h", "Wk"))
 
         self._bind_collapsible("codex", "CODEX", self.lbl_codex_title, self.codex_body)
 
@@ -407,7 +554,7 @@ class Quote0Window:
         self._bind_collapsible("deepseek", "DEEPSEEK", self.lbl_ds_title, self.ds_body)
 
         # 底部显示快捷键，字号随主界面缩放。
-        self.lbl_shortcuts = tk.Label(self.root, text="F5 刷新  +- 字号  /* 透明度",
+        self.lbl_shortcuts = tk.Label(self.root, text="F5 刷新  +- 字号  /* 透明度  1/2 模板",
                                       font=self.font_hint, bg=BG_COLOR, fg=FG_DIM, anchor="w")
         self.lbl_shortcuts.pack(fill="x", padx=(pad, pad + 12), pady=(0, 8))
 
@@ -570,8 +717,7 @@ class Quote0Window:
             self.lbl_r2_info.config(text=f"{l_remaining}% / {l_reset}", fg=status_color(l_status))
             self._draw_bar(self.can_r2, l_remaining, l_status)
 
-            reset_text = format_reset_credits(cx.get("reset_credits"))
-            self.lbl_reset_credits.config(text=reset_text or "重置卡 --", fg=FG_COLOR)
+            self._display_reset_credits(cx.get("reset_credits"))
         else:
             err = cx.get("raw_status", "error")
             self.lbl_r1_label.config(text="Codex")
@@ -580,7 +726,7 @@ class Quote0Window:
             self.lbl_r2_label.config(text="")
             self.lbl_r2_info.config(text="", fg=FG_DIM)
             self._draw_bar(self.can_r2, 0, "error")
-            self.lbl_reset_credits.config(text="重置卡 --", fg=FG_COLOR)
+            self._display_reset_credits(None)
 
         # DeepSeek（ok 时不显示状态，仅 warn/hot/error 时显示）
         if ds.get("ok"):
@@ -598,6 +744,19 @@ class Quote0Window:
             err = ds.get("raw_status", "error")
             self.lbl_ds_balance.config(text=err, fg=FG_HOT)
             self.lbl_ds_status.config(text="ERR", fg=FG_HOT)
+
+        self._last_snapshot = snapshot
+        self._update_rings(snapshot)
+
+    def _display_reset_credits(self, credits):
+        """卡片数量沿用正文大小，到期明细使用较小字号。"""
+        title, *details = format_reset_credit_details(credits).split("\n")
+        self.lbl_reset_credits.config(text=title, fg=FG_COLOR)
+        self.lbl_reset_expiry.config(text="\n".join(details))
+        if details:
+            self.lbl_reset_expiry.pack(anchor="w", after=self.lbl_reset_credits)
+        else:
+            self.lbl_reset_expiry.pack_forget()
 
     def _draw_bar(self, canvas: tk.Canvas, percent: int, status: str):
         """在 Canvas 上绘制进度条。"""
