@@ -6,7 +6,7 @@ quote0-burnout 本地弹窗 — Windows 桌面置顶显示 AI 额度数据。
   - 从 Antigravity、Codex（OpenAI）和 DeepSeek 获取实时用量/余额
   - tkinter 无边框置顶窗口，深色主题，像素风格
   - 支持分别折叠/展开 Antigravity、Codex、DeepSeek 模块
-  - 每 5 分钟自动刷新，双击手动刷新
+  - 每 5 分钟自动刷新，双击或 F5 手动刷新，+/- 调整字号，/* 调整透明度
   - 支持拖动、系统托盘最小化
 
 用法：
@@ -132,7 +132,8 @@ class Quote0Window:
         self.tray = TrayManager(self.root, "quote0-burnout")
 
         # Windows 无边框窗口设置透明度（SetLayeredWindowAttributes）
-        self._set_window_opacity(WINDOW_OPACITY)
+        self._opacity = max(0.0, min(1.0, WINDOW_OPACITY))
+        self._set_window_opacity(self._opacity)
 
         # 拖动相关
         self._drag_x = 0
@@ -140,6 +141,15 @@ class Quote0Window:
         self.root.bind("<Button-1>", self._on_press)
         self.root.bind("<B1-Motion>", self._on_drag)
         self.root.bind("<Double-Button-1>", self._on_double_click)
+        self.root.bind("<F5>", lambda _event: self.refresh())
+        for key in ("<plus>", "<equal>", "<KP_Add>"):
+            self.root.bind(key, lambda _event: self._change_font_size(1))
+        for key in ("<minus>", "<KP_Subtract>"):
+            self.root.bind(key, lambda _event: self._change_font_size(-1))
+        for key in ("<slash>", "<KP_Divide>"):
+            self.root.bind(key, lambda _event: self._change_opacity(-0.05))
+        for key in ("<asterisk>", "<KP_Multiply>"):
+            self.root.bind(key, lambda _event: self._change_opacity(0.05))
 
         # 右键菜单
         self._menu = tk.Menu(self.root, tearoff=0, bg=BG_COLOR, fg=FG_COLOR,
@@ -158,6 +168,8 @@ class Quote0Window:
 
         # 构建 UI
         self._build_ui()
+        self._fit_window()
+        self.root.after_idle(self.root.focus_force)
 
         # 首次加载数据
         self.refresh()
@@ -194,10 +206,40 @@ class Quote0Window:
         family = self._resolve_font_family()
         s = self.FONT_SIZE
         large = s + self.FONT_SIZE_LARGE_OFFSET
-        self.font_label = (family, s, "bold")
-        self.font_data   = (family, s)
-        self.font_small  = (family, s)
-        self.font_large  = (family, large, "bold")
+        # 使用共享字体对象，修改字号时所有关联控件同步更新。
+        self.font_label = tkfont.Font(root=self.root, family=family, size=s, weight="bold")
+        self.font_data = tkfont.Font(root=self.root, family=family, size=s)
+        self.font_small = tkfont.Font(root=self.root, family=family, size=s)
+        self.font_hint = tkfont.Font(root=self.root, family=family, size=max(5, int(s * 0.7)))
+        self.font_large = tkfont.Font(root=self.root, family=family, size=large, weight="bold")
+
+    def _fit_window(self, expand_only=False):
+        """按当前内容调整尺寸，数据更新时保留用户手动放大的空间。"""
+        self.root.update_idletasks()
+        width = max(280, self.root.winfo_reqwidth())
+        height = max(120, self.root.winfo_reqheight())
+        if expand_only:
+            width = max(width, self.root.winfo_width())
+            height = max(height, self.root.winfo_height())
+        # 只设置尺寸，保留窗口原有位置。
+        self.root.geometry(f"{width}x{height}")
+
+    def _change_font_size(self, delta):
+        """调整共享字号，并为放大后的内容留出空间。"""
+        current = self.font_data.cget("size")
+        size = max(6, min(40, current + delta))
+        for font in (self.font_label, self.font_data, self.font_small):
+            font.configure(size=size)
+        self.font_hint.configure(size=max(5, int(size * 0.7)))
+        self.font_large.configure(size=max(1, size + self.FONT_SIZE_LARGE_OFFSET))
+        self._fit_window()
+        return "break"
+
+    def _change_opacity(self, delta):
+        """调整窗口不透明度，避免窗口因完全透明而无法操作。"""
+        self._opacity = round(max(0.2, min(1.0, self._opacity + delta)), 2)
+        self._set_window_opacity(self._opacity)
+        return "break"
 
     def _bind_collapsible(self, key: str, title_text: str, title_label: tk.Label, body_frame: tk.Frame):
         """注册可折叠模块，点击标题可切换展开/折叠并自适应窗口高度。"""
@@ -227,7 +269,7 @@ class Quote0Window:
 
         # 折叠/展开后自适应窗口高度，保持当前宽度和位置
         self.root.update_idletasks()
-        cur_w = self.root.winfo_width() or WINDOW_WIDTH
+        cur_w = max(self.root.winfo_width() or WINDOW_WIDTH, self.root.winfo_reqwidth())
         req_h = max(120, self.root.winfo_reqheight())
         self.root.geometry(f"{cur_w}x{req_h}")
         return "break"
@@ -241,7 +283,7 @@ class Quote0Window:
         self.header.pack(fill="x", padx=pad, pady=(pad, 2))
 
         self.lbl_time = tk.Label(self.header, text="--:--", font=self.font_small,
-                                  bg=BG_COLOR, fg=FG_DIM)
+                                  bg=BG_COLOR, fg=FG_COLOR)
         self.lbl_time.pack(side="left")
 
         self.lbl_status = tk.Label(self.header, text="● A  ● C  ● D", font=self.font_small,
@@ -268,7 +310,7 @@ class Quote0Window:
             row_frame.pack(fill="x", pady=(2 if idx == 0 else 4, 0))
 
             lbl_label = tk.Label(row_frame, text=default_label, font=self.font_data,
-                                 bg=BG_COLOR, fg=FG_COLOR, anchor="w", width=6)
+                                 bg=BG_COLOR, fg=FG_COLOR, anchor="w", width=7)
             lbl_label.pack(side="left")
 
             canvas = tk.Canvas(row_frame, height=14, width=165, bg=BAR_BG,
@@ -331,7 +373,7 @@ class Quote0Window:
 
         # 重置卡信息：显示可用数量和最近到期时间。
         self.lbl_reset_credits = tk.Label(self.codex_body, text="重置卡 --", font=self.font_small,
-                                           bg=BG_COLOR, fg=FG_DIM, anchor="w")
+                                           bg=BG_COLOR, fg=FG_COLOR, anchor="w")
         self.lbl_reset_credits.pack(anchor="w", pady=(4, 0))
 
         self._bind_collapsible("codex", "CODEX", self.lbl_codex_title, self.codex_body)
@@ -364,6 +406,11 @@ class Quote0Window:
 
         self._bind_collapsible("deepseek", "DEEPSEEK", self.lbl_ds_title, self.ds_body)
 
+        # 底部显示快捷键，字号随主界面缩放。
+        self.lbl_shortcuts = tk.Label(self.root, text="F5 刷新  +- 字号  /* 透明度",
+                                      font=self.font_hint, bg=BG_COLOR, fg=FG_DIM, anchor="w")
+        self.lbl_shortcuts.pack(fill="x", padx=(pad, pad + 12), pady=(0, 8))
+
         # 右下角 resize handle
         self._resize_handle = tk.Frame(self.root, width=12, height=12, bg=DIVIDER, cursor="size_nw_se")
         self._resize_handle.place(relx=1.0, rely=1.0, anchor="se")
@@ -395,6 +442,7 @@ class Quote0Window:
             pass  # 失败则保持不透明
 
     def _on_press(self, event):
+        self.root.focus_force()
         self._drag_x = event.x
         self._drag_y = event.y
 
@@ -446,13 +494,14 @@ class Quote0Window:
         """带异常捕获的 UI 更新，防止未处理异常导致程序退出。"""
         try:
             self._update_ui(snapshot)
+            self._fit_window(expand_only=True)
         except Exception as e:
             self.lbl_time.config(text=f"UI错误: {e}", fg=FG_HOT)
 
     def _update_ui(self, snapshot: dict):
         """根据 snapshot 更新所有 UI 元素。"""
         ts = snapshot.get("updated_at", "--:--")
-        self.lbl_time.config(text=ts)
+        self.lbl_time.config(text=ts, fg=FG_COLOR)
 
         ag = snapshot.get("antigravity", {})
         cx = snapshot.get("codex", {})
@@ -522,7 +571,7 @@ class Quote0Window:
             self._draw_bar(self.can_r2, l_remaining, l_status)
 
             reset_text = format_reset_credits(cx.get("reset_credits"))
-            self.lbl_reset_credits.config(text=reset_text or "重置卡 --", fg=FG_DIM)
+            self.lbl_reset_credits.config(text=reset_text or "重置卡 --", fg=FG_COLOR)
         else:
             err = cx.get("raw_status", "error")
             self.lbl_r1_label.config(text="Codex")
@@ -531,7 +580,7 @@ class Quote0Window:
             self.lbl_r2_label.config(text="")
             self.lbl_r2_info.config(text="", fg=FG_DIM)
             self._draw_bar(self.can_r2, 0, "error")
-            self.lbl_reset_credits.config(text="重置卡 --", fg=FG_DIM)
+            self.lbl_reset_credits.config(text="重置卡 --", fg=FG_COLOR)
 
         # DeepSeek（ok 时不显示状态，仅 warn/hot/error 时显示）
         if ds.get("ok"):

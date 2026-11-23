@@ -27,6 +27,7 @@ class LocalAppFoldTests(unittest.TestCase):
         win = local_app.Quote0Window.__new__(local_app.Quote0Window)
         win.root = MagicMock()
         win.root.winfo_width.return_value = 504
+        win.root.winfo_reqwidth.return_value = 400
         win.root.winfo_reqheight.side_effect = [260, 390]
         win._collapsed = {"antigravity": False, "codex": False, "deepseek": False}
         win._sections = {}
