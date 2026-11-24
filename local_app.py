@@ -62,9 +62,11 @@ import ctypes
 import math
 import threading
 import tkinter as tk
+from dataclasses import replace
 from tkinter import font as tkfont
 
 from display import build_snapshot
+from rlcd_cast import load_rlcd_cast_config, push_snapshot_to_cast
 from tray_util import TrayManager
 
 # ── 配置 ──────────────────────────────────────────────────────────────────────
@@ -176,12 +178,28 @@ class Quote0Window:
         for key in ("<KeyPress-2>", "<KP_2>"):
             self.root.bind(key, lambda _event: self._set_template("ring"))
 
+        # 无线投屏后台自动推送配置与防并发锁
+        self._rlcd_config = load_rlcd_cast_config()
+        self._rlcd_enabled_var = tk.BooleanVar(value=self._rlcd_config.enabled)
+        self._rlcd_push_lock = threading.Lock()
+        self._rlcd_seq_lock = threading.Lock()
+        self._rlcd_push_seq = 0
+        self._rlcd_last_result = None
+
         # 右键菜单
         self._menu = tk.Menu(self.root, tearoff=0, bg=BG_COLOR, fg=FG_COLOR,
                              activebackground=DIVIDER, activeforeground=FG_COLOR)
         self._menu.add_command(label="刷新", command=self.refresh)
         self._menu.add_command(label="进度条模板 (1)", command=lambda: self._set_template("bar"))
         self._menu.add_command(label="圆环模板 (2)", command=lambda: self._set_template("ring"))
+        self._menu.add_separator()
+        self._menu.add_checkbutton(
+            label="无线投屏自动推送",
+            variable=self._rlcd_enabled_var,
+            command=self._on_toggle_rlcd_cast,
+        )
+        self._menu.add_command(label="立即推送到 RLCD", command=self.push_to_rlcd_now)
+        self._menu.add_separator()
         self._menu.add_command(label="最小化到托盘", command=self.tray.to_tray)
         self._menu.add_command(label="退出", command=self.quit)
         self.root.bind("<Button-3>", self._show_menu)
@@ -288,6 +306,8 @@ class Quote0Window:
             self.ag_bars.pack(fill="x")
             self.codex_bars.pack(fill="x", before=self.lbl_reset_credits)
         self._fit_window()
+        if self._last_snapshot and self._rlcd_config.enabled and self._rlcd_config.template == "sync":
+            self._push_rlcd_async(self._last_snapshot)
         return "break"
 
     def _on_template_arrow(self, template):
@@ -636,6 +656,67 @@ class Quote0Window:
                 "updated_at": "ERR",
             }
         self.root.after(0, lambda: self._update_ui_safe(snapshot))
+        self._push_rlcd_async(snapshot)
+
+    def _resolve_rlcd_template(self) -> str:
+        """确定无线投屏使用的排版模板：sync 跟随窗口当前模板，否则使用 .env 指定模板。"""
+        if self._rlcd_config.template == "sync":
+            return self._template
+        return self._rlcd_config.template
+
+    def _push_rlcd_async(self, snapshot: dict, force: bool = False) -> None:
+        """在后台线程渲染 400×300 PNG 并推送到无线投屏服务，捕获异常不阻塞弹窗。"""
+        with self._rlcd_seq_lock:
+            if not snapshot:
+                return
+            if not force and not self._rlcd_config.enabled:
+                return
+            cfg = replace(self._rlcd_config)
+            tpl = self._resolve_rlcd_template()
+            self._rlcd_push_seq += 1
+            my_seq = self._rlcd_push_seq
+
+        def worker():
+            try:
+                with self._rlcd_push_lock:
+                    with self._rlcd_seq_lock:
+                        if my_seq != self._rlcd_push_seq:
+                            return
+                    result = push_snapshot_to_cast(snapshot, cfg, template_override=tpl)
+                    self._rlcd_last_result = result
+                    if not result.get("ok") and sys.stderr is not None:
+                        try:
+                            sys.stderr.write(f"[Quote0Local][RLCD] 推送失败: {result.get('error', 'unknown')}\n")
+                        except Exception:
+                            pass
+            except Exception as exc:
+                self._rlcd_last_result = {"ok": False, "error": str(exc)}
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_toggle_rlcd_cast(self) -> None:
+        """右键开关：切换无线投屏自动推送；刚启用时立即推送一次当前快照。"""
+        enabled = bool(self._rlcd_enabled_var.get())
+        with self._rlcd_seq_lock:
+            self._rlcd_config.enabled = enabled
+        if enabled and self._last_snapshot:
+            self._push_rlcd_async(self._last_snapshot)
+
+    def push_to_rlcd_now(self) -> None:
+        """手动触发一次向无线投屏后台推帧。"""
+        if self._last_snapshot:
+            self._push_rlcd_async(self._last_snapshot, force=True)
+            return
+        # 尚未完成首次拉取时后台拉取一帧并强制推送
+        def worker():
+            try:
+                snap = build_snapshot()
+            except Exception:
+                return
+            self.root.after(0, lambda: self._update_ui_safe(snap))
+            self._push_rlcd_async(snap, force=True)
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _update_ui_safe(self, snapshot: dict):
         """带异常捕获的 UI 更新，防止未处理异常导致程序退出。"""

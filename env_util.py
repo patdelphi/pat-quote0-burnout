@@ -36,6 +36,16 @@ export FONT_SIZE_LARGE_OFFSET=0      # 余额等大字的字号增量，设为 0
 # export RAND0_INVERT=0                    # 是否反显：0 白底黑字 / 1 黑底白字
 # export RAND0_INTERVAL=0                  # 自动推送间隔（分钟）：0=关闭定时推送，正整数=每 N 分钟推送
 # export RAND0_TIMEOUT="5"                 # WebSocket 连接/收发超时（秒）
+
+# ESP32-S3 RLCD 无线投屏自动推送配置（推送到 xiaozhi-esp32 cast_server）
+export RLCD_CAST_ENABLED=0                         # 开关：0=关闭（默认），1=开启自动推送
+export RLCD_CAST_URL="http://127.0.0.1:8787/push"  # 无线投屏后台 /push 地址（支持仅填根地址）
+export RLCD_CAST_WIDTH=400                         # 渲染宽度（默认 400）
+export RLCD_CAST_HEIGHT=300                        # 渲染高度（默认 300）
+export RLCD_CAST_TEMPLATE="sync"                   # 模板：sync 跟随窗口 / bar 进度条 / ring 圆环
+export RLCD_CAST_INVERT=0                          # 是否反显：0 白底黑字 / 1 黑底白字
+export RLCD_CAST_PUSH_NOW=1                        # 推送时附带 push_now=1 立即刷屏
+export RLCD_CAST_TIMEOUT=5                         # HTTP 推送超时（秒）
 """
 
 
