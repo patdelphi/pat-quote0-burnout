@@ -46,6 +46,7 @@ export RLCD_CAST_TEMPLATE="sync"                   # 模板：sync 跟随窗口 
 export RLCD_CAST_INVERT=0                          # 是否反显：0 白底黑字 / 1 黑底白字
 export RLCD_CAST_PUSH_NOW=1                        # 推送时附带 push_now=1 立即刷屏
 export RLCD_CAST_TIMEOUT=5                         # HTTP 推送超时（秒）
+export RLCD_CAST_INTERVAL=1                        # 定时推送间隔（秒），默认 1 秒，0=关闭定时重推
 """
 
 

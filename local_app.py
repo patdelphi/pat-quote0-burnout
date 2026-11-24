@@ -185,6 +185,7 @@ class Quote0Window:
         self._rlcd_seq_lock = threading.Lock()
         self._rlcd_push_seq = 0
         self._rlcd_last_result = None
+        self._rlcd_timer_id = None
 
         # 右键菜单
         self._menu = tk.Menu(self.root, tearoff=0, bg=BG_COLOR, fg=FG_COLOR,
@@ -224,6 +225,8 @@ class Quote0Window:
 
         # 定时刷新
         self._schedule_refresh()
+        if self._rlcd_config.interval > 0:
+            self._schedule_rlcd_push()
 
     def _resolve_font_family(self) -> str:
         """检查用户配置的字体是否存在，不存在则按平台回退。"""
@@ -695,11 +698,14 @@ class Quote0Window:
         threading.Thread(target=worker, daemon=True).start()
 
     def _on_toggle_rlcd_cast(self) -> None:
-        """右键开关：切换无线投屏自动推送；刚启用时立即推送一次当前快照。"""
+        """右键开关：切换无线投屏自动推送；刚启用时立即推送并按需开启定时推流。"""
         enabled = bool(self._rlcd_enabled_var.get())
         with self._rlcd_seq_lock:
             self._rlcd_config.enabled = enabled
-        if enabled and self._last_snapshot:
+            interval = float(self._rlcd_config.interval)
+        if enabled and interval > 0 and self._rlcd_timer_id is None:
+            self._schedule_rlcd_push()
+        elif enabled and self._last_snapshot:
             self._push_rlcd_async(self._last_snapshot)
 
     def push_to_rlcd_now(self) -> None:
@@ -864,9 +870,36 @@ class Quote0Window:
             pass  # refresh 内部已处理，此处仅保险
         self.root.after(REFRESH_INTERVAL * 1000, self._schedule_refresh)
 
+    def _schedule_rlcd_push(self) -> None:
+        """按配置周期定时向无线投屏后台推送画面；上一帧推流未完成时跳过防堆积。"""
+        try:
+            with self._rlcd_seq_lock:
+                enabled = bool(self._rlcd_config.enabled)
+                interval = float(self._rlcd_config.interval)
+            if interval <= 0:
+                self._rlcd_timer_id = None
+                return
+            if enabled and self._last_snapshot and not self._rlcd_push_lock.locked():
+                self._push_rlcd_async(self._last_snapshot)
+            delay_ms = max(200, int(round(interval * 1000)))
+            self._rlcd_timer_id = self.root.after(delay_ms, self._schedule_rlcd_push)
+        except tk.TclError:
+            self._rlcd_timer_id = None
+        except Exception:
+            try:
+                self._rlcd_timer_id = self.root.after(1000, self._schedule_rlcd_push)
+            except Exception:
+                self._rlcd_timer_id = None
+
     # ── 退出 ────────────────────────────────────────────────────────────────────
 
     def quit(self):
+        if getattr(self, "_rlcd_timer_id", None) is not None:
+            try:
+                self.root.after_cancel(self._rlcd_timer_id)
+            except Exception:
+                pass
+            self._rlcd_timer_id = None
         self.tray.stop()
         self.root.destroy()
         sys.exit(0)

@@ -26,6 +26,8 @@ DEFAULT_WIDTH = 400
 DEFAULT_HEIGHT = 300
 DEFAULT_URL = "http://127.0.0.1:8787/push"
 DEFAULT_TIMEOUT = 5.0
+DEFAULT_INTERVAL = 1.0
+MIN_POSITIVE_INTERVAL = 0.2
 
 BLACK = 0
 WHITE = 255
@@ -43,6 +45,7 @@ class RlcdCastConfig:
     invert: bool = False
     push_now: bool = True
     timeout: float = DEFAULT_TIMEOUT
+    interval: float = DEFAULT_INTERVAL
 
 
 def _parse_bool(raw: Any, default: bool) -> bool:
@@ -91,6 +94,8 @@ def load_rlcd_cast_config(env: Optional[Mapping[str, str]] = None) -> RlcdCastCo
     invert = _parse_bool(src.get("RLCD_CAST_INVERT"), False)
     push_now = _parse_bool(src.get("RLCD_CAST_PUSH_NOW"), True)
     timeout = _parse_float(src.get("RLCD_CAST_TIMEOUT"), DEFAULT_TIMEOUT, 0.5, 60.0)
+    raw_interval = _parse_float(src.get("RLCD_CAST_INTERVAL"), DEFAULT_INTERVAL, 0.0, 3600.0)
+    interval = MIN_POSITIVE_INTERVAL if 0.0 < raw_interval < MIN_POSITIVE_INTERVAL else raw_interval
 
     return RlcdCastConfig(
         enabled=enabled,
@@ -101,6 +106,7 @@ def load_rlcd_cast_config(env: Optional[Mapping[str, str]] = None) -> RlcdCastCo
         invert=invert,
         push_now=push_now,
         timeout=timeout,
+        interval=interval,
     )
 
 

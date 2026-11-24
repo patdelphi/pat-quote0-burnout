@@ -88,6 +88,7 @@ class TestRlcdCastConfig(unittest.TestCase):
         self.assertFalse(cfg.invert)
         self.assertTrue(cfg.push_now)
         self.assertEqual(cfg.timeout, 5.0)
+        self.assertEqual(cfg.interval, 1.0)
 
         cfg_on = rlcd_cast.load_rlcd_cast_config(
             {
@@ -98,6 +99,7 @@ class TestRlcdCastConfig(unittest.TestCase):
                 "RLCD_CAST_PUSH_NOW": "0",
                 "RLCD_CAST_TIMEOUT": "bad-num",
                 "RLCD_CAST_WIDTH": "-10",
+                "RLCD_CAST_INTERVAL": "2.5",
             }
         )
         self.assertTrue(cfg_on.enabled)
@@ -106,6 +108,13 @@ class TestRlcdCastConfig(unittest.TestCase):
         self.assertFalse(cfg_on.push_now)
         self.assertEqual(cfg_on.timeout, 5.0)
         self.assertEqual(cfg_on.width, 400)
+        self.assertEqual(cfg_on.interval, 2.5)
+
+        self.assertEqual(rlcd_cast.load_rlcd_cast_config({"RLCD_CAST_INTERVAL": "0.5"}).interval, 0.5)
+        self.assertEqual(rlcd_cast.load_rlcd_cast_config({"RLCD_CAST_INTERVAL": "0"}).interval, 0.0)
+        self.assertEqual(rlcd_cast.load_rlcd_cast_config({"RLCD_CAST_INTERVAL": "0.05"}).interval, 0.2)
+        self.assertEqual(rlcd_cast.load_rlcd_cast_config({"RLCD_CAST_INTERVAL": "bad"}).interval, 1.0)
+        self.assertEqual(rlcd_cast.load_rlcd_cast_config({"RLCD_CAST_INTERVAL": "-1"}).interval, 1.0)
 
     def test_normalize_cast_push_url(self):
         self.assertEqual(
@@ -512,7 +521,8 @@ class TestLocalAppRlcdIntegration(unittest.TestCase):
              patch.object(local_app, "TrayManager"), \
              patch.object(local_app.Quote0Window, "_set_window_opacity"), \
              patch.object(local_app.Quote0Window, "refresh"), \
-             patch.object(local_app.Quote0Window, "_schedule_refresh"):
+             patch.object(local_app.Quote0Window, "_schedule_refresh"), \
+             patch.object(local_app.Quote0Window, "_schedule_rlcd_push"):
             win = local_app.Quote0Window()
         win.root.update()
         return win
@@ -618,6 +628,45 @@ class TestLocalAppRlcdIntegration(unittest.TestCase):
             self.assertTrue(win._rlcd_last_result["ok"])
         finally:
             win.root.destroy()
+
+    def test_periodic_rlcd_push_timer_respects_interval_and_busy_lock(self):
+        win = self._create_window({"RLCD_CAST_ENABLED": "1", "RLCD_CAST_INTERVAL": "1"})
+        try:
+            win._last_snapshot = _full_sample_snapshot()
+
+            # 1) 空闲状态触发定时器应异步推送并安排 1000ms 下次回调
+            with patch.object(win, "_push_rlcd_async") as push_mock, \
+                 patch.object(win.root, "after", return_value="timer-1") as after_mock:
+                win._schedule_rlcd_push()
+                push_mock.assert_called_once_with(win._last_snapshot)
+                after_mock.assert_called_once_with(1000, win._schedule_rlcd_push)
+                self.assertEqual(win._rlcd_timer_id, "timer-1")
+
+            # 2) 若上一帧正在占用推流锁，本次跳过推送防止线程堆积，同时继续下轮计时
+            self.assertTrue(win._rlcd_push_lock.acquire(blocking=False))
+            try:
+                with patch.object(win, "_push_rlcd_async") as push_mock, \
+                     patch.object(win.root, "after", return_value="timer-2") as after_mock:
+                    win._schedule_rlcd_push()
+                    push_mock.assert_not_called()
+                    after_mock.assert_called_once_with(1000, win._schedule_rlcd_push)
+            finally:
+                win._rlcd_push_lock.release()
+        finally:
+            win.root.destroy()
+
+        # 3) RLCD_CAST_INTERVAL=0 时不推送也不挂载定时器
+        win_off = self._create_window({"RLCD_CAST_ENABLED": "1", "RLCD_CAST_INTERVAL": "0"})
+        try:
+            win_off._last_snapshot = _full_sample_snapshot()
+            with patch.object(win_off, "_push_rlcd_async") as push_mock, \
+                 patch.object(win_off.root, "after") as after_mock:
+                win_off._schedule_rlcd_push()
+                push_mock.assert_not_called()
+                after_mock.assert_not_called()
+                self.assertIsNone(win_off._rlcd_timer_id)
+        finally:
+            win_off.root.destroy()
 
 
 if __name__ == "__main__":
