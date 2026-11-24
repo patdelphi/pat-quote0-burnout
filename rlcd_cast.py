@@ -167,6 +167,15 @@ def _tsize(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont) -> t
     return bbox[2] - bbox[0], bbox[3] - bbox[1]
 
 
+def _fit_font(draw: ImageDraw.ImageDraw, text: str, sizes: tuple[int, ...], max_w: int) -> ImageFont.ImageFont:
+    """在允许字号序列中挑选不超出 max_w 的最大字号字体，保证大字号下完整展示。"""
+    for sz in sizes:
+        f = _get_font(sz)
+        if _tsize(draw, text, f)[0] <= max_w:
+            return f
+    return _get_font(sizes[-1])
+
+
 def _is_num(val: Any) -> bool:
     """判断是否为有效有限数值（排除 bool）。"""
     return isinstance(val, (int, float)) and not isinstance(val, bool) and math.isfinite(float(val))
@@ -235,15 +244,15 @@ def _draw_dashed_line(draw: ImageDraw.ImageDraw, x0: int, x1: int, y: int) -> No
 
 
 def _draw_progress_bar(draw: ImageDraw.ImageDraw, x: int, y: int, w: int, h: int, remaining_pct: Optional[float]) -> None:
-    """绘制纯黑白高对比进度条：1px 实线框 + 内部实黑剩余填充。"""
-    draw.rectangle((x, y, x + w - 1, y + h - 1), outline=BLACK, width=1)
+    """绘制纯黑白高对比进度条：2px 实线框 + 内部加粗实黑剩余填充。"""
+    draw.rectangle((x, y, x + w - 1, y + h - 1), outline=BLACK, width=2)
     if not _is_num(remaining_pct):
         return
     clamped = max(0.0, min(100.0, float(remaining_pct)))
-    inner_w = max(0, w - 4)
+    inner_w = max(0, w - 6)
     fill_w = int(round(inner_w * clamped / 100.0))
-    if fill_w > 0:
-        draw.rectangle((x + 2, y + 2, x + 2 + fill_w - 1, y + h - 3), fill=BLACK)
+    if fill_w > 0 and h > 6:
+        draw.rectangle((x + 3, y + 3, x + 3 + fill_w - 1, y + h - 4), fill=BLACK)
 
 
 def _draw_ring(
@@ -252,24 +261,27 @@ def _draw_ring(
     cy: int,
     diameter: int,
     remaining_pct: Optional[float],
-    label_font: ImageFont.ImageFont,
+    label_font: Optional[ImageFont.ImageFont] = None,
+    stroke_width: int = 8,
 ) -> None:
-    """绘制适用于 1-bit 单色屏的圆环进度图（细轨道外圈 + 粗黑色剩余弧线）。"""
+    """绘制适用于 1-bit 单色屏的加粗圆环进度图（2px 轨道外圈 + 8px 加粗黑色剩余弧线）。"""
     r = diameter // 2
     outer = (cx - r, cy - r, cx + r, cy + r)
-    # 细 1px 轨道避免在 1-bit 屏幕丢轨
-    draw.ellipse(outer, outline=BLACK, width=1)
+    # 2px 实线轨道提升在 1-bit 屏幕上的轮廓清晰度
+    draw.ellipse(outer, outline=BLACK, width=2)
     if _is_num(remaining_pct):
         val = max(0.0, min(100.0, float(remaining_pct)))
         if val >= 99.5:
-            draw.ellipse(outer, outline=BLACK, width=5)
+            draw.ellipse(outer, outline=BLACK, width=stroke_width)
         elif val > 0:
             # PIL arc 按顺时针从 3 点钟方向计算角度，顶部 12 点钟为 -90°
             extent = 3.6 * val
-            draw.arc(outer, start=-90, end=-90 + extent, fill=BLACK, width=5)
+            draw.arc(outer, start=-90, end=-90 + extent, fill=BLACK, width=stroke_width)
         pct_text = _fmt_pct(val)
     else:
         pct_text = "--%"
+    if label_font is None:
+        label_font = _get_font(15 if len(pct_text) <= 3 else 13)
     bbox = draw.textbbox((0, 0), pct_text, font=label_font)
     tx = cx - (bbox[2] - bbox[0]) // 2 - bbox[0]
     ty = cy - (bbox[3] - bbox[1]) // 2 - bbox[1]
@@ -320,10 +332,11 @@ def _format_reset_lines(reset_credits: Any, first_line_cards: Optional[int] = No
 
 
 def _draw_header(draw: ImageDraw.ImageDraw, width: int, snap: Mapping[str, Any]) -> None:
-    """绘制顶部 28px 纯黑状态栏与右上角矢量状态指示灯。"""
-    draw.rectangle((0, 0, width - 1, 27), fill=BLACK)
-    f_title = _get_font(13)
-    f_meta = _get_font(11)
+    """绘制顶部 30px 纯黑状态栏与右上角矢量状态指示灯。"""
+    bar_h = 30
+    draw.rectangle((0, 0, width - 1, bar_h - 1), fill=BLACK)
+    f_title = _get_font(15)
+    f_meta = _get_font(13)
 
     updated = str(snap.get("updated_at") or "--:--")
     title = f"AI 用量看板 · {updated}" if _FONT_HAS_CJK else f"AI QUOTA  {updated}"
@@ -336,114 +349,142 @@ def _draw_header(draw: ImageDraw.ImageDraw, width: int, snap: Mapping[str, Any])
         ("C", str(cx.get("status", "unknown")).lower(), bool(cx.get("ok"))),
         ("D", str(ds.get("status", "unknown")).lower(), bool(ds.get("ok"))),
     )
-    dot_r = 3
-    cur_x = width - 10
+    dot_r = 4
+    cur_x = width - 9
     for letter, st, ok_flag in reversed(items):
-        lw, _ = _tsize(draw, letter, f_meta)
+        lb = draw.textbbox((0, 0), letter, font=f_meta)
+        lw = lb[2] - lb[0]
+        lh = lb[3] - lb[1]
         cur_x -= lw
-        draw.text((cur_x, 7), letter, font=f_meta, fill=WHITE)
-        dot_cx = cur_x - 3 - dot_r
-        dot_cy = 14
+        ly = (bar_h - lh) // 2 - lb[1]
+        draw.text((cur_x - lb[0], ly), letter, font=f_meta, fill=WHITE)
+        dot_cx = cur_x - 4 - dot_r
+        dot_cy = bar_h // 2
         if not ok_flag:
-            draw.line((dot_cx - 3, dot_cy - 3, dot_cx + 3, dot_cy + 3), fill=WHITE, width=1)
-            draw.line((dot_cx - 3, dot_cy + 3, dot_cx + 3, dot_cy - 3), fill=WHITE, width=1)
+            draw.line((dot_cx - 3, dot_cy - 3, dot_cx + 3, dot_cy + 3), fill=WHITE, width=2)
+            draw.line((dot_cx - 3, dot_cy + 3, dot_cx + 3, dot_cy - 3), fill=WHITE, width=2)
         elif st == "ok":
             draw.ellipse((dot_cx - dot_r, dot_cy - dot_r, dot_cx + dot_r, dot_cy + dot_r), fill=WHITE)
         else:
-            draw.ellipse((dot_cx - dot_r, dot_cy - dot_r, dot_cx + dot_r, dot_cy + dot_r), outline=WHITE, width=1)
-        cur_x = dot_cx - dot_r - 10
+            draw.ellipse((dot_cx - dot_r, dot_cy - dot_r, dot_cx + dot_r, dot_cy + dot_r), outline=WHITE, width=2)
+        cur_x = dot_cx - dot_r - 9
 
-    title_max_w = max(80, cur_x - 4)
-    draw.text((10, 5), _truncate_text(draw, title, f_title, title_max_w), font=f_title, fill=WHITE)
+    title_max_w = max(80, cur_x - 10)
+    safe_title = _truncate_text(draw, title, f_title, title_max_w)
+    tb = draw.textbbox((0, 0), safe_title, font=f_title)
+    ty = (bar_h - (tb[3] - tb[1])) // 2 - tb[1]
+    draw.text((9 - tb[0], ty), safe_title, font=f_title, fill=WHITE)
 
 
 def _draw_bar_template(draw: ImageDraw.ImageDraw, width: int, height: int, snap: Mapping[str, Any]) -> None:
-    """在 400×300 上绘制进度条风格（bar）完整面板。"""
-    pad = 10
-    f_sec = _get_font(12)
-    f_row = _get_font(12)
-    f_small = _get_font(11)
-    f_big = _get_font(26)
+    """在 400×300 上绘制四列统一对齐的大字进度条风格（bar）面板。"""
+    pad = 8
+    f_sec = _get_font(14)
+    f_sec_lg = _get_font(15)
+    f_row = _get_font(15)
+    f_small = _get_font(12)
 
     ag = snap.get("antigravity", {})
     cx = snap.get("codex", {})
     ds = snap.get("deepseek", {})
 
-    # ── 1. ANTIGRAVITY 区（y = 34..140）──────────────────────────────────────
-    y = 34
-    draw.text((pad, y), "ANTIGRAVITY", font=f_sec, fill=BLACK)
-    ag_tag = _status_tag(ag.get("status", "unknown"), bool(ag.get("ok")))
-    if ag_tag != "OK":
-        _draw_status_pill(draw, width - pad, y - 1, ag_tag, f_small, invert_pill=True)
-    y += 20
-
+    # 预先收集 ANTIGRAVITY 与 CODEX 全部数据行，保证两个区块共享同一套四列网格尺寸
+    ag_items: list[tuple[str, Optional[float], str, str]] = []
     if ag.get("ok"):
-        rows = ag.get("rows") or []
-        parsed_rows = []
-        max_rw = 64
-        for row in rows[:4]:
-            label = _truncate_text(draw, str(row.get("label") or "--"), f_row, 54)
+        for row in (ag.get("rows") or [])[:4]:
             rem = row.get("remaining_percent")
-            reset = str(row.get("reset") or "?")
-            rtxt = _truncate_text(draw, f"{_fmt_pct(rem)}  {reset}", f_row, 150)
-            rw, _ = _tsize(draw, rtxt, f_row)
-            max_rw = max(max_rw, rw)
-            parsed_rows.append((label, rem if _is_num(rem) else None, rtxt))
-        bar_x = pad + 56
-        bar_w = max(80, width - pad - max_rw - 8 - bar_x)
-        for label, rem, rtxt in parsed_rows:
-            draw.text((pad, y + 1), label, font=f_row, fill=BLACK)
-            _draw_progress_bar(draw, bar_x, y + 3, bar_w, 12, rem)
-            rw, _ = _tsize(draw, rtxt, f_row)
-            draw.text((width - pad - rw, y + 1), rtxt, font=f_row, fill=BLACK)
-            y += 20
-    else:
-        err_msg = _truncate_text(draw, f"ERROR: {ag.get('raw_status', 'unavailable')}", f_row, width - pad * 2)
-        draw.text((pad, y + 8), err_msg, font=f_row, fill=BLACK)
+            rem_val = float(rem) if _is_num(rem) else None
+            ag_items.append((
+                str(row.get("label") or "--"),
+                rem_val,
+                _fmt_pct(rem_val),
+                str(row.get("reset") or "?"),
+            ))
 
-    # 分隔线
-    _draw_dashed_line(draw, pad, width - pad, 141)
-
-    # ── 2. CODEX 区（y = 148..234）──────────────────────────────────────────
-    y = 148
-    draw.text((pad, y), "CODEX", font=f_sec, fill=BLACK)
-    cx_tag = _status_tag(cx.get("status", "unknown"), bool(cx.get("ok")))
-    if cx_tag != "OK":
-        _draw_status_pill(draw, width - pad, y - 1, cx_tag, f_small, invert_pill=True)
-    credits_info = cx.get("reset_credits") or {}
-    reset_line1, _ = _format_reset_lines(credits_info)
-    y += 21
-
+    cx_items: list[tuple[str, Optional[float], str, str]] = []
     if cx.get("ok"):
-        codex_rows = []
         for prefix, default_lbl in (("short", "5h"), ("long", "Wk")):
             used = cx.get(f"{prefix}_used_percent")
-            rem = (100.0 - float(used)) if _is_num(used) else None
-            reset = str(cx.get(f"{prefix}_reset") or "?")
-            rtxt = _truncate_text(draw, f"{_fmt_pct(rem)}  {reset}", f_row, 165)
-            lbl = _truncate_text(draw, str(cx.get(f"{prefix}_label") or default_lbl), f_row, 38)
-            codex_rows.append((lbl, rem, rtxt))
-        max_rw = max(64, *(_tsize(draw, item[2], f_row)[0] for item in codex_rows))
-        bar_x = pad + 42
-        bar_w = max(90, width - pad - max_rw - 8 - bar_x)
-        for lbl, rem, rtxt in codex_rows:
-            draw.text((pad, y + 1), lbl, font=f_row, fill=BLACK)
-            _draw_progress_bar(draw, bar_x, y + 3, bar_w, 12, rem)
-            rw, _ = _tsize(draw, rtxt, f_row)
-            draw.text((width - pad - rw, y + 1), rtxt, font=f_row, fill=BLACK)
-            y += 21
+            rem_val = (100.0 - float(used)) if _is_num(used) else None
+            cx_items.append((
+                str(cx.get(f"{prefix}_label") or default_lbl),
+                rem_val,
+                _fmt_pct(rem_val),
+                str(cx.get(f"{prefix}_reset") or "?"),
+            ))
 
-        # 重置卡张数放在到期日期前面，统一展示在底部同一行
-        if reset_line1:
-            draw.text((pad, y + 1), _truncate_text(draw, reset_line1, f_small, width - pad * 2), font=f_small, fill=BLACK)
+    all_items = ag_items + cx_items
+    max_label_w = max((_tsize(draw, item[0], f_row)[0] for item in all_items), default=0)
+    max_pct_w = max((_tsize(draw, item[2], f_row)[0] for item in all_items), default=0)
+    max_reset_w = max((_tsize(draw, item[3], f_row)[0] for item in all_items), default=0)
+
+    # 统一四列坐标：左标签 / 统一等长 Bar / 右对齐 % / 左对齐时间日期
+    label_col_w = min(84, max(72, max_label_w + 2))
+    time_baseline_w = _tsize(draw, "12/01 00:00", f_row)[0]
+    time_col_w = min(116, max(time_baseline_w, max_reset_w))
+    time_x = (width - pad) - time_col_w
+    pct_right_x = time_x - 7
+    pct_col_w = max(_tsize(draw, "100%", f_row)[0], max_pct_w)
+    bar_x = pad + label_col_w + 6
+    bar_w = max(72, pct_right_x - pct_col_w - 8 - bar_x)
+
+    def _draw_section_rows(start_y: int, step_y: int, items: list[tuple[str, Optional[float], str, str]]) -> int:
+        cur_y = start_y
+        for lbl_raw, rem_val, pct_str, rst_raw in items:
+            lbl_safe = _truncate_text(draw, lbl_raw, f_row, label_col_w)
+            lbl_bbox = draw.textbbox((0, 0), lbl_safe, font=f_row)
+            draw.text((pad - lbl_bbox[0], cur_y), lbl_safe, font=f_row, fill=BLACK)
+
+            _draw_progress_bar(draw, bar_x, cur_y + 3, bar_w, 14, rem_val)
+
+            pct_bbox = draw.textbbox((0, 0), pct_str, font=f_row)
+            pct_w = pct_bbox[2] - pct_bbox[0]
+            draw.text((pct_right_x - pct_w - pct_bbox[0], cur_y), pct_str, font=f_row, fill=BLACK)
+
+            rst_safe = _truncate_text(draw, rst_raw, f_row, time_col_w)
+            rst_bbox = draw.textbbox((0, 0), rst_safe, font=f_row)
+            draw.text((time_x - rst_bbox[0], cur_y), rst_safe, font=f_row, fill=BLACK)
+
+            cur_y += step_y
+        return cur_y
+
+    # ── 1. ANTIGRAVITY 区（y = 33..145）──────────────────────────────────────
+    draw.text((pad, 33), "ANTIGRAVITY", font=f_sec, fill=BLACK)
+    ag_tag = _status_tag(ag.get("status", "unknown"), bool(ag.get("ok")))
+    if ag_tag != "OK":
+        _draw_status_pill(draw, width - pad, 32, ag_tag, f_small, invert_pill=True)
+
+    if ag.get("ok"):
+        _draw_section_rows(53, 23, ag_items)
     else:
-        err_msg = _truncate_text(draw, f"ERROR: {cx.get('raw_status', 'unavailable')}", f_row, width - pad * 2)
-        draw.text((pad, y + 6), err_msg, font=f_row, fill=BLACK)
+        err_msg = _truncate_text(draw, f"ERROR: {ag.get('raw_status', 'unavailable')}", f_row, width - pad * 2)
+        draw.text((pad, 63), err_msg, font=f_row, fill=BLACK)
 
     # 分隔线
-    _draw_dashed_line(draw, pad, width - pad, 237)
+    _draw_dashed_line(draw, pad, width - pad, 146)
 
-    # ── 3. DEEPSEEK 区（y = 244..294）：左侧标题，右侧右对齐金额 ──────────
+    # ── 2. CODEX 区（y = 150..242）──────────────────────────────────────────
+    draw.text((pad, 150), "CODEX", font=f_sec, fill=BLACK)
+    cx_tag = _status_tag(cx.get("status", "unknown"), bool(cx.get("ok")))
+    if cx_tag != "OK":
+        _draw_status_pill(draw, width - pad, 149, cx_tag, f_small, invert_pill=True)
+    credits_info = cx.get("reset_credits") or {}
+    reset_line1, _ = _format_reset_lines(credits_info)
+
+    if cx.get("ok"):
+        _draw_section_rows(171, 24, cx_items)
+        # 重置卡张数置于到期前面，按宽度自动挑选最大可完整放下的字号
+        if reset_line1:
+            f_reset = _fit_font(draw, reset_line1, (13, 12, 11), width - pad * 2)
+            draw.text((pad, 222), _truncate_text(draw, reset_line1, f_reset, width - pad * 2), font=f_reset, fill=BLACK)
+    else:
+        err_msg = _truncate_text(draw, f"ERROR: {cx.get('raw_status', 'unavailable')}", f_row, width - pad * 2)
+        draw.text((pad, 179), err_msg, font=f_row, fill=BLACK)
+
+    # 分隔线
+    _draw_dashed_line(draw, pad, width - pad, 244)
+
+    # ── 3. DEEPSEEK 区（y = 248..298）：左侧标题，右侧大号右对齐金额 ──────────
     if ds.get("ok"):
         bal = ds.get("balance")
         sym = str(ds.get("symbol") or "$")
@@ -453,40 +494,41 @@ def _draw_bar_template(draw: ImageDraw.ImageDraw, width: int, height: int, snap:
         bal_text = str(ds.get("raw_status") or "error")
         ds_tag = "ERR"
 
-    title_w, _ = _tsize(draw, "DEEPSEEK", f_sec)
+    title_w, _ = _tsize(draw, "DEEPSEEK", f_sec_lg)
     left_end = pad + title_w
     if ds_tag != "OK":
-        draw.text((pad, 246), "DEEPSEEK", font=f_sec, fill=BLACK)
+        draw.text((pad, 250), "DEEPSEEK", font=f_sec_lg, fill=BLACK)
         tag_bbox = draw.textbbox((0, 0), ds_tag, font=f_small)
         tag_w = (tag_bbox[2] - tag_bbox[0]) + 12
-        _draw_status_pill(draw, pad + tag_w, 267, ds_tag, f_small, invert_pill=True)
+        _draw_status_pill(draw, pad + tag_w, 271, ds_tag, f_small, invert_pill=True)
         left_end = max(left_end, pad + tag_w)
     else:
-        draw.text((pad, 260), "DEEPSEEK", font=f_sec, fill=BLACK)
+        draw.text((pad, 263), "DEEPSEEK", font=f_sec_lg, fill=BLACK)
 
-    bal_max_w = max(80, width - pad - left_end - 12)
+    bal_max_w = max(90, width - pad - left_end - 12)
+    f_big = _fit_font(draw, bal_text, (32, 28, 24, 20), bal_max_w)
     safe_bal = _truncate_text(draw, bal_text, f_big, bal_max_w)
     bal_bbox = draw.textbbox((0, 0), safe_bal, font=f_big)
     bw = bal_bbox[2] - bal_bbox[0]
     bh = bal_bbox[3] - bal_bbox[1]
     bx = (width - pad) - bw - bal_bbox[0]
-    by = 268 - bh // 2 - bal_bbox[1]
+    by = 272 - bh // 2 - bal_bbox[1]
     draw.text((bx, by), safe_bal, font=f_big, fill=BLACK)
 
 
 def _draw_ring_template(draw: ImageDraw.ImageDraw, width: int, height: int, snap: Mapping[str, Any]) -> None:
-    """在 400×300 上绘制圆环风格（ring）完整面板。"""
-    pad = 10
-    f_sec = _get_font(12)
-    f_ring = _get_font(12)
-    f_small = _get_font(11)
-    f_big = _get_font(22)
+    """在 400×300 上绘制大字与加粗圆环风格（ring）完整面板。"""
+    pad = 8
+    f_sec = _get_font(14)
+    f_lbl = _get_font(14)
+    f_sub = _get_font(13)
+    f_small = _get_font(12)
 
     ag = snap.get("antigravity", {})
     cx_data = snap.get("codex", {})
     ds = snap.get("deepseek", {})
 
-    # ── 上半区：ANTIGRAVITY 4 圆环 ──────────────────────────────────────────
+    # ── 上半区：ANTIGRAVITY 4 加粗圆环（64px 直径，8px 环宽）────────────────
     draw.text((pad, 32), "ANTIGRAVITY", font=f_sec, fill=BLACK)
     ag_tag = _status_tag(ag.get("status", "unknown"), bool(ag.get("ok")))
     if ag_tag != "OK":
@@ -494,59 +536,66 @@ def _draw_ring_template(draw: ImageDraw.ImageDraw, width: int, height: int, snap
 
     if ag.get("ok"):
         rows = ag.get("rows") or []
-        centers_x = (55, 152, 248, 345)
+        centers_x = (52, 151, 249, 348)
         for idx, ring_cx in enumerate(centers_x):
             row = rows[idx] if idx < len(rows) else {}
-            lbl = _truncate_text(draw, str(row.get("label") or "--"), f_small, 90)
+            lbl = _truncate_text(draw, str(row.get("label") or "--"), f_lbl, 94)
             rem = row.get("remaining_percent")
-            reset = _truncate_text(draw, str(row.get("reset") or "--"), f_small, 92)
-            _draw_ring(draw, ring_cx, 82, 52, rem if _is_num(rem) else None, f_ring)
-            lw, _ = _tsize(draw, lbl, f_small)
-            draw.text((ring_cx - lw // 2, 112), lbl, font=f_small, fill=BLACK)
-            rw, _ = _tsize(draw, reset, f_small)
-            draw.text((ring_cx - rw // 2, 128), reset, font=f_small, fill=BLACK)
+            reset_raw = str(row.get("reset") or "--")
+            f_rst = _fit_font(draw, reset_raw, (13, 12, 11), 94)
+            reset = _truncate_text(draw, reset_raw, f_rst, 94)
+            _draw_ring(draw, ring_cx, 84, 64, rem if _is_num(rem) else None, stroke_width=8)
+            lw, _ = _tsize(draw, lbl, f_lbl)
+            draw.text((ring_cx - lw // 2, 118), lbl, font=f_lbl, fill=BLACK)
+            rw, _ = _tsize(draw, reset, f_rst)
+            draw.text((ring_cx - rw // 2, 136), reset, font=f_rst, fill=BLACK)
     else:
-        err_msg = _truncate_text(draw, f"ERROR: {ag.get('raw_status', 'unavailable')}", f_ring, width - pad * 2)
-        draw.text((pad, 78), err_msg, font=f_ring, fill=BLACK)
+        err_msg = _truncate_text(draw, f"ERROR: {ag.get('raw_status', 'unavailable')}", f_lbl, width - pad * 2)
+        draw.text((pad, 80), err_msg, font=f_lbl, fill=BLACK)
 
-    _draw_dashed_line(draw, pad, width - pad, 147)
+    _draw_dashed_line(draw, pad, width - pad, 155)
 
-    # ── 下半区左栏：CODEX 双圆环 + 重置卡 ────────────────────────────────────
-    split_x = 248
-    draw.line((split_x, 153, split_x, height - 8), fill=BLACK, width=1)
+    # ── 下半区左栏：CODEX 2 加粗圆环（62px 直径，8px 环宽）+ 重置卡 ───────────
+    split_x = 250
+    draw.line((split_x, 160, split_x, height - 6), fill=BLACK, width=2)
 
-    draw.text((pad, 152), "CODEX", font=f_sec, fill=BLACK)
+    draw.text((pad, 159), "CODEX", font=f_sec, fill=BLACK)
     cx_tag = _status_tag(cx_data.get("status", "unknown"), bool(cx_data.get("ok")))
     if cx_tag != "OK":
-        _draw_status_pill(draw, split_x - 10, 151, cx_tag, f_small, invert_pill=True)
+        _draw_status_pill(draw, split_x - 8, 158, cx_tag, f_small, invert_pill=True)
 
     credits_info = cx_data.get("reset_credits") or {}
     reset_line1, reset_line2 = _format_reset_lines(credits_info, first_line_cards=1)
 
     if cx_data.get("ok"):
-        specs = (("short", "5h", 68), ("long", "Wk", 180))
+        specs = (("short", "5h", 68), ("long", "Wk", 184))
         for prefix, default_lbl, ring_cx in specs:
             used = cx_data.get(f"{prefix}_used_percent")
             rem = (100.0 - float(used)) if _is_num(used) else None
             lbl = str(cx_data.get(f"{prefix}_label") or default_lbl)
             reset = str(cx_data.get(f"{prefix}_reset") or "?")
-            _draw_ring(draw, ring_cx, 197, 50, rem, f_ring)
-            cap = _truncate_text(draw, f"{lbl}  {reset}", f_small, 108)
-            cw, _ = _tsize(draw, cap, f_small)
-            draw.text((ring_cx - cw // 2, 227), cap, font=f_small, fill=BLACK)
+            _draw_ring(draw, ring_cx, 209, 62, rem, stroke_width=8)
+            cap_raw = f"{lbl} {reset}"
+            f_cap = _fit_font(draw, cap_raw, (13, 12, 11), 116)
+            cap = _truncate_text(draw, cap_raw, f_cap, 116)
+            cw, _ = _tsize(draw, cap, f_cap)
+            draw.text((ring_cx - cw // 2, 243), cap, font=f_cap, fill=BLACK)
 
+        max_reset_w = split_x - pad - 8
         if reset_line1:
-            draw.text((pad, 248), _truncate_text(draw, reset_line1, f_small, split_x - pad - 10), font=f_small, fill=BLACK)
+            f_r1 = _fit_font(draw, reset_line1, (13, 12, 11), max_reset_w)
+            draw.text((pad, 262), _truncate_text(draw, reset_line1, f_r1, max_reset_w), font=f_r1, fill=BLACK)
         if reset_line2:
-            draw.text((pad, 266), _truncate_text(draw, reset_line2, f_small, split_x - pad - 10), font=f_small, fill=BLACK)
+            f_r2 = _fit_font(draw, reset_line2, (13, 12, 11), max_reset_w)
+            draw.text((pad, 280), _truncate_text(draw, reset_line2, f_r2, max_reset_w), font=f_r2, fill=BLACK)
     else:
-        err_msg = _truncate_text(draw, f"ERR: {cx_data.get('raw_status', 'unavailable')}", f_ring, split_x - pad - 10)
-        draw.text((pad, 205), err_msg, font=f_ring, fill=BLACK)
+        err_msg = _truncate_text(draw, f"ERR: {cx_data.get('raw_status', 'unavailable')}", f_lbl, split_x - pad - 8)
+        draw.text((pad, 212), err_msg, font=f_lbl, fill=BLACK)
 
     # ── 下半区右栏：DEEPSEEK 余额（右对齐贴齐右侧边界）────────────────────
-    right_x = split_x + 12
-    right_max_w = max(60, width - pad - right_x)
-    draw.text((right_x, 152), "DEEPSEEK", font=f_sec, fill=BLACK)
+    right_x = split_x + 10
+    right_max_w = max(64, width - pad - right_x)
+    draw.text((right_x, 159), "DEEPSEEK", font=f_sec, fill=BLACK)
     if ds.get("ok"):
         bal = ds.get("balance")
         sym = str(ds.get("symbol") or "$")
@@ -557,14 +606,15 @@ def _draw_ring_template(draw: ImageDraw.ImageDraw, width: int, height: int, snap
         ds_tag = "ERR"
 
     if ds_tag != "OK":
-        _draw_status_pill(draw, width - pad, 151, ds_tag, f_small, invert_pill=True)
+        _draw_status_pill(draw, width - pad, 158, ds_tag, f_small, invert_pill=True)
 
+    f_big = _fit_font(draw, bal_text, (28, 25, 22, 19), right_max_w)
     safe_bal = _truncate_text(draw, bal_text, f_big, right_max_w)
     bal_bbox = draw.textbbox((0, 0), safe_bal, font=f_big)
     bw = bal_bbox[2] - bal_bbox[0]
     bh = bal_bbox[3] - bal_bbox[1]
     bx = (width - pad) - bw - bal_bbox[0]
-    by = 216 - bh // 2 - bal_bbox[1]
+    by = 224 - bh // 2 - bal_bbox[1]
     draw.text((bx, by), safe_bal, font=f_big, fill=BLACK)
 
 

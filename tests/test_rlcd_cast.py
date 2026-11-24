@@ -223,14 +223,14 @@ class TestRlcdCastRendering(unittest.TestCase):
 
         bar_ok = rlcd_cast.render_rlcd_image(snap_ok, template="bar").convert("L")
         # 全 ok 时 ANTIGRAVITY 与 CODEX 标题行右侧均保持留白（无 OK 框、无独立重置卡字样）
-        ag_top_right = [bar_ok.getpixel((x, y)) for y in range(30, 50) for x in range(340, 392)]
+        ag_top_right = [bar_ok.getpixel((x, y)) for y in range(31, 49) for x in range(340, 392)]
         self.assertTrue(all(px == 255 for px in ag_top_right))
-        cx_top_right = [bar_ok.getpixel((x, y)) for y in range(145, 164) for x in range(300, 392)]
+        cx_top_right = [bar_ok.getpixel((x, y)) for y in range(149, 166) for x in range(300, 392)]
         self.assertTrue(all(px == 255 for px in cx_top_right))
 
         # DeepSeek 余额应右对齐绘制在右半侧，左下角标题右侧保持留白
-        ds_left_mid = [bar_ok.getpixel((x, y)) for y in range(248, 294) for x in range(95, 220)]
-        ds_right = [bar_ok.getpixel((x, y)) for y in range(248, 294) for x in range(280, 392)]
+        ds_left_mid = [bar_ok.getpixel((x, y)) for y in range(252, 294) for x in range(105, 210)]
+        ds_right = [bar_ok.getpixel((x, y)) for y in range(252, 294) for x in range(270, 392)]
         self.assertTrue(all(px == 255 for px in ds_left_mid))
         self.assertTrue(any(px == 0 for px in ds_right))
 
@@ -238,18 +238,103 @@ class TestRlcdCastRendering(unittest.TestCase):
         snap_warn = _full_sample_snapshot()
         snap_warn["antigravity"]["status"] = "warn"
         bar_warn = rlcd_cast.render_rlcd_image(snap_warn, template="bar").convert("L")
-        ag_warn_right = [bar_warn.getpixel((x, y)) for y in range(30, 50) for x in range(340, 392)]
+        ag_warn_right = [bar_warn.getpixel((x, y)) for y in range(31, 49) for x in range(340, 392)]
         self.assertTrue(any(px == 0 for px in ag_warn_right))
 
         # 模板 2 (ring)：CODEX 标题行右侧无多余文本，DEEPSEEK 金额右对齐且底部无 OK 框
         ring_ok = rlcd_cast.render_rlcd_image(snap_ok, template="ring").convert("L")
         self.assertEqual(ring_ok.size, (400, 300))
-        ring_cx_right = [ring_ok.getpixel((x, y)) for y in range(149, 168) for x in range(140, 242)]
+        ring_cx_right = [ring_ok.getpixel((x, y)) for y in range(157, 174) for x in range(140, 244)]
         self.assertTrue(all(px == 255 for px in ring_cx_right))
-        ring_ds_right = [ring_ok.getpixel((x, y)) for y in range(190, 240) for x in range(300, 392)]
+        ring_ds_right = [ring_ok.getpixel((x, y)) for y in range(198, 250) for x in range(290, 392)]
         self.assertTrue(any(px == 0 for px in ring_ds_right))
-        ring_ds_bottom = [ring_ok.getpixel((x, y)) for y in range(250, 290) for x in range(260, 392)]
+        ring_ds_bottom = [ring_ok.getpixel((x, y)) for y in range(260, 294) for x in range(265, 392)]
         self.assertTrue(all(px == 255 for px in ring_ds_bottom))
+
+    def test_ring_stroke_is_thickened_and_readable(self):
+        snap = _full_sample_snapshot()
+        snap["antigravity"]["rows"][0]["remaining_percent"] = 100
+        ring_img = rlcd_cast.render_rlcd_image(snap, template="ring").convert("L")
+
+        # 校验第一个 100% 圆环（中心 x=52, y=84, 直径 64）顶部环壁连续黑像素厚度 >= 8
+        col_vals = [ring_img.getpixel((52, y)) for y in range(48, 72)]
+        max_run = 0
+        cur_run = 0
+        for px in col_vals:
+            if px == 0:
+                cur_run += 1
+                max_run = max(max_run, cur_run)
+            else:
+                cur_run = 0
+        self.assertGreaterEqual(max_run, 8)
+
+        # 圆环中心文字区域（100%）应同时存在黑色文字像素和白色背景留白
+        center_pixels = [ring_img.getpixel((x, y)) for y in range(74, 94) for x in range(36, 68)]
+        self.assertTrue(any(px == 0 for px in center_pixels))
+        self.assertTrue(any(px == 255 for px in center_pixels))
+
+    def test_bar_template_unified_bar_bounds_and_no_gem_wk_truncation(self):
+        snap = {
+            "updated_at": "12:25",
+            "antigravity": {
+                "ok": True,
+                "status": "ok",
+                "rows": [
+                    {"label": "Gem 5h", "remaining_percent": 93, "reset": "14:24"},
+                    {"label": "Gem Wk", "remaining_percent": 96, "reset": "12/01 04:24"},
+                    {"label": "Cld 5h", "remaining_percent": 100, "reset": "17:25"},
+                    {"label": "Cld Wk", "remaining_percent": 100, "reset": "12/01 12:25"},
+                ],
+            },
+            "codex": {
+                "ok": True,
+                "short_label": "5h",
+                "short_used_percent": 0,
+                "short_reset": "17:25",
+                "long_label": "Wk",
+                "long_used_percent": 22,
+                "long_reset": "11/26 20:55",
+                "status": "ok",
+            },
+            "deepseek": {"ok": True, "balance": 437.66, "symbol": "¥", "status": "ok"},
+        }
+        img = Image.new("L", (400, 300), rlcd_cast.WHITE)
+        draw = rlcd_cast.ImageDraw.Draw(img)
+        captured_texts: list[str] = []
+        orig_text = draw.text
+
+        def spy_text(xy, text, *args, **kwargs):
+            captured_texts.append(str(text))
+            return orig_text(xy, text, *args, **kwargs)
+
+        with patch.object(draw, "text", side_effect=spy_text):
+            rlcd_cast._draw_bar_template(draw, 400, 300, snap)
+
+        # Gem Wk 不应被截断为 Gem ...
+        self.assertIn("Gem Wk", captured_texts)
+        self.assertFalse(any(t.startswith("Gem") and "..." in t for t in captured_texts))
+
+        # 检查全部 6 条进度条（ANTIGRAVITY 4 行 + CODEX 2 行）顶部边线拥有完全相同的起止 X 坐标
+        rendered = rlcd_cast.render_rlcd_image(snap, template="bar").convert("L")
+        bar_top_ys = (56, 79, 102, 125, 174, 198)
+        bounds: list[tuple[int, int]] = []
+        for by in bar_top_ys:
+            # 识别横向连续黑线（长度 >= 60 像素）的准确起止 X 坐标，避免左右文本像素干扰
+            runs: list[tuple[int, int]] = []
+            start_x: int | None = None
+            for x in range(40, 320):
+                if rendered.getpixel((x, by)) == 0:
+                    if start_x is None:
+                        start_x = x
+                elif start_x is not None:
+                    if (x - 1 - start_x) >= 60:
+                        runs.append((start_x, x - 1))
+                    start_x = None
+            if start_x is not None and (319 - start_x) >= 60:
+                runs.append((start_x, 319))
+            self.assertEqual(len(runs), 1, f"进度条 y={by} 顶框线异常: {runs}")
+            bounds.append(runs[0])
+        self.assertEqual(len(set(bounds)), 1, f"进度条起止坐标不一致: {bounds}")
 
 
 class TestRlcdCastPushAndCompatibility(unittest.TestCase):
